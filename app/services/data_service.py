@@ -1,4 +1,17 @@
-"""Data service for fetching and processing market data."""
+"""Data service for fetching and processing market data.
+
+This module handles all data operations for the retirement planner:
+- Yahoo Finance data fetching with caching
+- Historical data backfilling for ETFs with limited history
+- Market data calibration (means, covariances, correlations)
+- Data validation and error handling
+
+Key features:
+- LRU caching for improved performance
+- Automatic ticker mapping for historical backfill
+- Robust error handling for data fetching failures
+- Frequency-aware data processing (daily/monthly)
+"""
 
 import numpy as np
 import pandas as pd

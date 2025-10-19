@@ -1,4 +1,17 @@
-"""Chart components for visualization."""
+"""Chart components for visualization.
+
+This module handles all charting and visualization for the retirement planner:
+- Portfolio path charts with percentile bands
+- Terminal wealth histograms with fine-grained bins
+- Comparison charts between different simulation methods
+- Interactive Plotly charts with hover information
+
+Key features:
+- Adaptive styling for different simulation types
+- Non-overlapping percentile labels
+- Sample path visualization with appropriate density
+- Professional financial chart styling
+"""
 
 import streamlit as st
 import plotly.graph_objs as go
@@ -7,7 +20,14 @@ from app.schemas import SimulationResult
 
 
 class ChartComponent:
-    """Charts for the retirement planner."""
+    """Charts for the retirement planner.
+
+    This class provides all visualization functionality:
+    - Portfolio path charts with percentile bands and sample paths
+    - Terminal wealth distribution histograms
+    - Comparison charts between simulation methods
+    - Adaptive styling based on simulation type (Historical vs Monte Carlo)
+    """
 
     def plot_simulation_paths(self, result: SimulationResult, title: str) -> None:
         """Plot simulation paths with percentile bands and sample paths."""

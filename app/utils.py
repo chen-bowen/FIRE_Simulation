@@ -1,4 +1,17 @@
-"""Utility functions and constants for the retirement planner."""
+"""Utility functions and constants for the retirement planner.
+
+This module provides helper functions used throughout the application:
+- Input validation and data alignment
+- Financial calculations and conversions
+- Frequency and period calculations
+- Weight validation and normalization
+
+Key features:
+- Comprehensive input validation
+- Financial math utilities
+- Data alignment and normalization
+- Error handling with custom exceptions
+"""
 
 import numpy as np
 import pandas as pd

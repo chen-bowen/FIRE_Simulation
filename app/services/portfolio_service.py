@@ -1,4 +1,17 @@
-"""Portfolio management service."""
+"""Portfolio management service.
+
+This module handles all portfolio-related mathematics:
+- Portfolio rebalancing and return calculations
+- Contribution and withdrawal processing
+- Inflation adjustments and period calculations
+- Portfolio state management
+
+Key features:
+- Frequency-aware calculations (daily/monthly)
+- Inflation-adjusted spending
+- Portfolio rebalancing to target weights
+- Support for different pacing modes (monthly boundary for daily frequency)
+"""
 
 import numpy as np
 import pandas as pd

@@ -1,9 +1,17 @@
-"""Main application for the retirement planner."""
+"""Main application for the retirement planner.
+
+This module orchestrates the entire retirement planning application, including:
+- UI components (sidebar, charts, results)
+- Data services (market data fetching)
+- Simulation services (historical, Monte Carlo, hybrid)
+- Input validation and error handling
+"""
 
 import streamlit as st
 import numpy as np
 from datetime import date
 
+# Import application components and services
 from app.config import get_config
 from app.schemas import SimulationParams, DataConfig
 from app.services import DataService, SimulationService
@@ -12,21 +20,29 @@ from app.utils import validate_weights, align_weights_with_data, calculate_horiz
 
 
 def main():
-    """Main application entry point."""
-    st.set_page_config(page_title="Retirement Planner", layout="wide", initial_sidebar_state="expanded")
+    """Main application entry point.
 
+    Sets up the Streamlit interface and orchestrates the retirement planning workflow:
+    1. Initialize UI components and services
+    2. Render sidebar inputs and validate them
+    3. Calculate derived parameters (retirement horizons)
+    4. Run simulations when user clicks "Run Simulation"
+    5. Display results across multiple tabs
+    """
+    # Configure Streamlit page layout
+    st.set_page_config(page_title="Retirement Planner", layout="wide", initial_sidebar_state="expanded")
     st.title("Retirement Planner: Historical + Monte Carlo")
 
-    # Initialize components
-    sidebar = SidebarComponent()
-    charts = ChartComponent()
-    results = ResultsComponent()
+    # Initialize UI components
+    sidebar = SidebarComponent()  # Handles user input form
+    charts = ChartComponent()  # Handles all visualizations
+    results = ResultsComponent()  # Handles metrics and statistics display
 
-    # Initialize services
-    data_service = DataService()
-    simulation_service = SimulationService()
+    # Initialize business logic services
+    data_service = DataService()  # Fetches market data from Yahoo Finance
+    simulation_service = SimulationService()  # Runs historical, MC, and hybrid simulations
 
-    # Render sidebar and get inputs
+    # Render sidebar and collect user inputs
     inputs = sidebar.render()
 
     # Validate inputs

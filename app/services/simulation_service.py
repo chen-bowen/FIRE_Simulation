@@ -1,4 +1,16 @@
-"""Simulation service for historical and Monte Carlo simulations."""
+"""Simulation service for historical and Monte Carlo simulations.
+
+This module contains the core simulation engines:
+- Historical simulation: Rolling window backtests using actual market data
+- Monte Carlo simulation: Statistical modeling with calibrated parameters
+- Hybrid simulation: Combines both approaches for comprehensive analysis
+
+Key features:
+- Rolling window backtests with bootstrap sampling fallback
+- Calibrated Monte Carlo with Cholesky decomposition
+- Portfolio rebalancing and inflation adjustments
+- Success rate calculations and percentile analysis
+"""
 
 import numpy as np
 import pandas as pd
@@ -9,9 +21,22 @@ from .portfolio_service import PortfolioService
 
 
 class SimulationService:
-    """Service for running retirement simulations."""
+    """Service for running retirement simulations.
+
+    This class provides three main simulation methods:
+    1. Historical: Uses rolling windows of actual market data
+    2. Monte Carlo: Uses statistical modeling with calibrated parameters
+    3. Hybrid: Combines both approaches (50% historical + 50% Monte Carlo)
+
+    All methods handle:
+    - Portfolio rebalancing and contributions/withdrawals
+    - Inflation adjustments
+    - Success rate calculations
+    - Percentile analysis of outcomes
+    """
 
     def __init__(self):
+        # Initialize portfolio service for portfolio math operations
         self.portfolio_service = PortfolioService()
 
     def run_historical_simulation(

@@ -1,4 +1,17 @@
-"""Data models and type definitions for the retirement planner."""
+"""Data models and type definitions for the retirement planner.
+
+This module defines all data structures used throughout the application:
+- Simulation parameters and results
+- Portfolio state management
+- Market data structures
+- Custom exception classes
+
+Key features:
+- Type-safe data models with validation
+- Comprehensive simulation result tracking
+- Error handling with custom exceptions
+- Support for different simulation frequencies
+"""
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
