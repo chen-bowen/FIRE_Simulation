@@ -10,7 +10,7 @@ class ChartComponent:
     """Charts for the retirement planner."""
 
     def plot_simulation_paths(self, result: SimulationResult, title: str) -> None:
-        """Plot simulation paths with percentile bands."""
+        """Plot simulation paths with percentile bands and sample paths."""
         x = np.arange(result.horizon_periods) / result.periods_per_year
 
         fig = go.Figure()
@@ -21,6 +21,36 @@ class ChartComponent:
         fig.add_trace(
             go.Scatter(x=x, y=result.p10_path, name="P10", line=dict(color="#9ecae1"), fill="tonexty", fillcolor="rgba(158, 202, 225, 0.3)")
         )
+
+        # Add sample individual paths (fewer for Monte Carlo, more for Historical)
+        if hasattr(result, "sample_paths") and result.sample_paths is not None:
+            # Show fewer paths for Monte Carlo (smoother, more theoretical)
+            # Show more paths for Historical (real market data with variation)
+            if "Monte Carlo" in title:
+                n_sample_paths = min(10, len(result.sample_paths))  # Fewer MC paths
+            else:
+                n_sample_paths = min(30, len(result.sample_paths))  # More historical paths
+
+            for i in range(n_sample_paths):
+                # Different styling for Monte Carlo vs Historical
+                if "Monte Carlo" in title:
+                    # More subtle for Monte Carlo (theoretical, smooth)
+                    line_color = "rgba(128,128,128,0.2)"
+                    line_width = 0.5
+                else:
+                    # More visible for Historical (real market data)
+                    line_color = "rgba(128,128,128,0.4)"
+                    line_width = 1
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=x,
+                        y=result.sample_paths[i],
+                        name=f"Sample {i+1}" if i < 3 else None,  # Only show legend for first 3
+                        line=dict(color=line_color, width=line_width),
+                        showlegend=i < 3,
+                    )
+                )
 
         fig.update_layout(title=title, xaxis_title="Years", yaxis_title="Portfolio Value ($)", hovermode="x unified", showlegend=True)
 

@@ -3,8 +3,8 @@
 import streamlit as st
 import numpy as np
 from datetime import date
-from ..config import get_config
-from ..utils import validate_weights, align_weights_with_data
+from app.config import get_config
+from app.utils import validate_weights, align_weights_with_data
 
 
 class SidebarComponent:
@@ -56,7 +56,7 @@ class SidebarComponent:
         # Other inputs
         inflation = st.sidebar.number_input("Inflation (%/yr)", value=self.config.default_inflation * 100, step=0.1) / 100.0
         n_paths = st.sidebar.number_input("MC paths", value=self.config.default_mc_paths, min_value=100, step=100)
-        seed = st.sidebar.number_input("Random seed", value=self.config.default_seed, step=1)
+        seed = st.sidebar.number_input("Random seed (change for different Monte Carlo results)", value=self.config.default_seed, step=1)
 
         # Parse inputs
         ticker_list = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]

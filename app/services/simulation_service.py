@@ -62,12 +62,44 @@ class SimulationService:
             terminal_balances: List[float] = []
             success_count = 0
 
-            max_starts = min(300, len(asset_returns) - actual_periods)
+            # Ensure we have enough data for multiple rolling windows
+            max_starts = min(1000, len(asset_returns) - actual_periods)
+
+            # If we don't have enough data for rolling windows, use bootstrap sampling
+            if max_starts < 100:
+                print(f"Warning: Limited historical data. Using bootstrap sampling to generate {min(500, max_starts * 5)} scenarios.")
+                max_starts = min(500, max_starts * 5)
+                use_bootstrap = True
+            else:
+                use_bootstrap = False
 
             for start in range(max_starts):
-                end = start + actual_periods
-                window_asset_returns = asset_returns[start:end]
-                dates = returns_df.index[start:end]
+                if use_bootstrap:
+                    # Bootstrap sampling: randomly select starting points with replacement
+                    # Use different strategies for better variation
+                    if start % 3 == 0:
+                        # Random start point
+                        bootstrap_start = np.random.randint(0, len(asset_returns) - actual_periods + 1)
+                    elif start % 3 == 1:
+                        # Staggered sampling (every nth point)
+                        step = max(1, len(asset_returns) // 50)
+                        bootstrap_start = (start * step) % (len(asset_returns) - actual_periods + 1)
+                    else:
+                        # Weighted sampling (prefer more recent data)
+                        weights = np.arange(1, len(asset_returns) - actual_periods + 2)
+                        weights = weights / weights.sum()
+                        bootstrap_start = np.random.choice(len(asset_returns) - actual_periods + 1, p=weights)
+
+                    end = bootstrap_start + actual_periods
+                    window_asset_returns = asset_returns[bootstrap_start:end]
+                    dates = returns_df.index[bootstrap_start:end]
+                else:
+                    # Standard rolling window with step size for more variation
+                    step = max(1, (len(asset_returns) - actual_periods) // max_starts)
+                    adjusted_start = start * step
+                    end = adjusted_start + actual_periods
+                    window_asset_returns = asset_returns[adjusted_start:end]
+                    dates = returns_df.index[adjusted_start:end]
 
                 state = PortfolioState(balance=params.initial_balance, weights=weights)
                 balances = np.zeros(actual_periods)
@@ -131,6 +163,13 @@ class SimulationService:
 
             success_rate = success_count / float(max_starts)
 
+            # Store sample paths for visualization (up to 100 for better variation)
+            sample_paths = None
+            if len(balances_over_time) > 0:
+                n_samples = min(100, len(balances_over_time))
+                sample_indices = np.random.choice(len(balances_over_time), n_samples, replace=False)
+                sample_paths = np.array([balances_over_time[i] for i in sample_indices])
+
             return SimulationResult(
                 success_rate=success_rate,
                 terminal_balances=np.array(terminal_balances),
@@ -142,6 +181,7 @@ class SimulationService:
                 requested_periods=total_periods,
                 data_limited=actual_periods < total_periods,
                 available_years=actual_periods / ppy,
+                sample_paths=sample_paths,
             )
 
         except Exception as e:
@@ -197,6 +237,12 @@ class SimulationService:
                 asset_returns = correlated + means
                 portfolio_returns = asset_returns @ weights
 
+                # Debug: Print first few returns to verify randomness
+                if p == 0:
+                    print(f"Monte Carlo path {p}: First 5 returns = {portfolio_returns[:5]}")
+                    print(f"Random seed used: {seed}")
+                    print(f"Monte Carlo simulation type: RANDOM GENERATED")
+
                 for i in range(total_periods):
                     in_accumulation = i < params.pre_retire_years * ppy
 
@@ -233,6 +279,13 @@ class SimulationService:
 
             success_rate = float(np.mean(terminal_balances > 0))
 
+            # Store sample paths for visualization (up to 100 for better variation)
+            sample_paths = None
+            if n_paths > 0:
+                n_samples = min(100, n_paths)
+                sample_indices = np.random.choice(n_paths, n_samples, replace=False)
+                sample_paths = all_paths[sample_indices]
+
             return SimulationResult(
                 success_rate=success_rate,
                 terminal_balances=terminal_balances,
@@ -241,6 +294,7 @@ class SimulationService:
                 p90_path=p90_path,
                 periods_per_year=ppy,
                 horizon_periods=total_periods,
+                sample_paths=sample_paths,
             )
 
         except Exception as e:
@@ -293,12 +347,45 @@ class SimulationService:
             terminal_balances: List[float] = []
             success_count = 0
 
-            # Historical portion
+            # Historical portion - determine sampling strategy
             max_starts = min(n_historical, len(asset_returns) - actual_periods)
+
+            # If we don't have enough data for rolling windows, use bootstrap sampling
+            if max_starts < 50:
+                print(
+                    f"Warning: Limited historical data for hybrid. Using bootstrap sampling to generate {min(200, max_starts * 3)} scenarios."
+                )
+                max_starts = min(200, max_starts * 3)
+                use_bootstrap = True
+            else:
+                use_bootstrap = False
             for start in range(max_starts):
-                end = start + actual_periods
-                window_asset_returns = asset_returns[start:end]
-                dates = returns_df.index[start:end]
+                if use_bootstrap:
+                    # Bootstrap sampling: randomly select starting points with replacement
+                    # Use different strategies for better variation
+                    if start % 3 == 0:
+                        # Random start point
+                        bootstrap_start = np.random.randint(0, len(asset_returns) - actual_periods + 1)
+                    elif start % 3 == 1:
+                        # Staggered sampling (every nth point)
+                        step = max(1, len(asset_returns) // 50)
+                        bootstrap_start = (start * step) % (len(asset_returns) - actual_periods + 1)
+                    else:
+                        # Weighted sampling (prefer more recent data)
+                        weights = np.arange(1, len(asset_returns) - actual_periods + 2)
+                        weights = weights / weights.sum()
+                        bootstrap_start = np.random.choice(len(asset_returns) - actual_periods + 1, p=weights)
+
+                    end = bootstrap_start + actual_periods
+                    window_asset_returns = asset_returns[bootstrap_start:end]
+                    dates = returns_df.index[bootstrap_start:end]
+                else:
+                    # Standard rolling window with step size for more variation
+                    step = max(1, (len(asset_returns) - actual_periods) // max_starts)
+                    adjusted_start = start * step
+                    end = adjusted_start + actual_periods
+                    window_asset_returns = asset_returns[adjusted_start:end]
+                    dates = returns_df.index[adjusted_start:end]
 
                 state = PortfolioState(balance=params.initial_balance, weights=weights)
                 balances = np.zeros(actual_periods)
@@ -419,6 +506,25 @@ class SimulationService:
 
             success_rate = success_count / float(len(balances_over_time))
 
+            # Debug information
+            print(f"Historical simulation: Generated {len(balances_over_time)} paths")
+            print(f"Terminal balance range: ${np.min(terminal_balances):,.0f} to ${np.max(terminal_balances):,.0f}")
+            print(f"Success rate: {success_rate:.1%}")
+            print(f"Sampling method: {'Bootstrap' if use_bootstrap else 'Rolling Windows'}")
+
+            # Debug: Show first path returns for comparison
+            if len(balances_over_time) > 0:
+                first_path = balances_over_time[0]
+                print(f"Historical first path: First 5 balances = {first_path[:5]}")
+                print(f"Historical simulation type: REAL MARKET DATA")
+
+            # Store sample paths for visualization (up to 100 for better variation)
+            sample_paths = None
+            if len(balances_over_time) > 0:
+                n_samples = min(100, len(balances_over_time))
+                sample_indices = np.random.choice(len(balances_over_time), n_samples, replace=False)
+                sample_paths = np.array([balances_over_time[i] for i in sample_indices])
+
             return SimulationResult(
                 success_rate=success_rate,
                 terminal_balances=np.array(terminal_balances),
@@ -430,6 +536,7 @@ class SimulationService:
                 requested_periods=total_periods,
                 data_limited=actual_periods < total_periods,
                 available_years=actual_periods / ppy,
+                sample_paths=sample_paths,
             )
 
         except Exception as e:

@@ -42,6 +42,7 @@ class SimulationResult:
     requested_periods: Optional[int] = None
     data_limited: bool = False
     available_years: Optional[float] = None
+    sample_paths: Optional[np.ndarray] = None  # Sample individual paths for visualization
 
 
 @dataclass
