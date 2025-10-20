@@ -72,6 +72,12 @@ def main():
             # Align weights with available data
             weights = align_weights_with_data(inputs["weights"], list(returns_df.columns))
 
+            # Debug: Check alignment
+            print(f"Debug - Original weights: {inputs['weights']}")
+            print(f"Debug - Data columns: {list(returns_df.columns)}")
+            print(f"Debug - Aligned weights: {weights}")
+            print(f"Debug - Aligned weights shape: {weights.shape}")
+
             # Create market data
             market_data = data_service.create_market_data(returns_df, weights, inputs["frequency"])
 
@@ -86,6 +92,11 @@ def main():
                 frequency=inputs["frequency"],
                 pacing=inputs["pacing"],
             )
+
+            # Debug: Verify weights alignment
+            print(f"Debug - Final weights being passed to simulation: {weights}")
+            print(f"Debug - Final weights shape: {weights.shape}")
+            print(f"Debug - Data shape: {returns_df.shape}")
 
             # Run simulations
             tab_hist, tab_mc, tab_hybrid, tab_compare = st.tabs(["Historical", "Monte Carlo", "Hybrid", "Comparison"])

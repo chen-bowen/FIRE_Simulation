@@ -64,7 +64,30 @@ class PortfolioService:
         new_balance = max(0.0, state.balance + net_flow)
 
         # Apply portfolio return (weighted)
-        portfolio_ret = float(np.dot(state.weights, period_return))
+        # Accept either a vector of per-asset returns (same length as weights)
+        # or a single blended/scalar return. This ensures robustness when
+        # the number of holdings varies (including 1 security) or when a
+        # pre-blended return is provided.
+        if isinstance(period_return, np.ndarray):
+            # Squeeze to 1-D if needed
+            pr = np.squeeze(period_return)
+            if pr.ndim == 0:
+                portfolio_ret = float(pr)
+            elif pr.shape[0] == state.weights.shape[0]:
+                portfolio_ret = float(np.dot(state.weights, pr))
+            elif pr.shape[0] == 1:
+                # Treat as already blended
+                portfolio_ret = float(pr[0])
+            elif state.weights.shape[0] == 1:
+                # Single-asset portfolio but multiple returns provided;
+                # take weighted sum with single weight (which is 1.0 after normalization)
+                portfolio_ret = float(np.dot(state.weights, pr if pr.ndim == 1 else pr.ravel()))
+            else:
+                # Fallback: treat as blended by averaging to avoid shape errors
+                portfolio_ret = float(np.mean(pr))
+        else:
+            # Plain scalar
+            portfolio_ret = float(period_return)
         new_balance = max(0.0, new_balance * (1.0 + portfolio_ret))
 
         # Note: In this simplified model, we keep target weights

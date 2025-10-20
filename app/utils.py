@@ -60,14 +60,24 @@ def align_weights_with_data(weights: np.ndarray, data_columns: List[str]) -> np.
     n_available = len(data_columns)
     n_weights = len(weights)
 
+    # Start from a candidate weight vector that matches number of available assets
     if n_weights == n_available:
-        return weights / weights.sum()
+        aligned = np.array(weights, dtype=float)
     elif n_weights == 1:
-        # Broadcast single weight
-        return np.repeat(float(weights[0]), n_available)
+        # Broadcast single weight across all assets, then normalize below
+        aligned = np.repeat(float(weights[0]), n_available)
     else:
-        # Reset to equal weights
-        return np.repeat(1.0 / n_available, n_available)
+        # Mismatch: default to equal weights for all available assets
+        aligned = np.repeat(1.0, n_available)
+
+    # Normalize to sum to 1 and guard against division by zero
+    total = float(np.sum(aligned))
+    if total <= 0.0:
+        aligned = np.repeat(1.0, n_available)
+        total = float(np.sum(aligned))
+    aligned = aligned / total
+
+    return aligned
 
 
 def format_currency(amount: float) -> str:

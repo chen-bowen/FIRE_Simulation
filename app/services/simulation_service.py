@@ -69,6 +69,13 @@ class SimulationService:
             # Build portfolio returns
             asset_returns = returns_df.to_numpy()
 
+            # Debug: Check data shapes
+            print(f"Debug - returns_df shape: {returns_df.shape}")
+            print(f"Debug - returns_df columns: {list(returns_df.columns)}")
+            print(f"Debug - asset_returns shape: {asset_returns.shape}")
+            print(f"Debug - weights shape: {weights.shape}")
+            print(f"Debug - weights: {weights}")
+
             # Use available data length, adjusting simulation parameters if needed
             available_periods = len(asset_returns) - 1
             actual_periods = min(total_periods, available_periods)
@@ -153,6 +160,13 @@ class SimulationService:
                         spend = 0.0 if in_accumulation else spend_pp
 
                     # Step portfolio
+                    # Debug: Check shapes before calling step_portfolio
+                    if i == 0:  # Only debug first iteration
+                        print(f"Debug - window_asset_returns[i] shape: {window_asset_returns[i].shape}")
+                        print(f"Debug - weights shape: {weights.shape}")
+                        print(f"Debug - window_asset_returns[i]: {window_asset_returns[i]}")
+                        print(f"Debug - weights: {weights}")
+
                     state = self.portfolio_service.step_portfolio(
                         state=state,
                         contrib=contrib,
@@ -359,6 +373,13 @@ class SimulationService:
 
             # Get historical asset returns
             asset_returns = returns_df.to_numpy()
+
+            # Debug: Check data shapes
+            print(f"Debug - returns_df shape: {returns_df.shape}")
+            print(f"Debug - returns_df columns: {list(returns_df.columns)}")
+            print(f"Debug - asset_returns shape: {asset_returns.shape}")
+            print(f"Debug - weights shape: {weights.shape}")
+            print(f"Debug - weights: {weights}")
 
             # Calculate historical moments for calibration
             means = np.mean(asset_returns, axis=0)
