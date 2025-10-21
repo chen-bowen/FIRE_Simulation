@@ -45,23 +45,8 @@ pip install -r requirements.txt
 
 ## Run
 
-### Option 1: Direct Streamlit
-
 ```bash
-streamlit run app/main.py
-```
-
-### Option 2: Using run script
-
-```bash
-python run.py
-```
-
-### Option 3: Development mode
-
-```bash
-# For development with auto-reload
-streamlit run app/main.py --server.runOnSave true
+PYTHONPATH="." streamlit run app/main.py --logger.level=debug
 ```
 
 ## Configuration
