@@ -13,9 +13,10 @@ Key features:
 - Professional financial chart styling
 """
 
-import streamlit as st
-import plotly.graph_objs as go
 import numpy as np
+import plotly.graph_objs as go
+import streamlit as st
+
 from app.schemas import SimulationResult
 
 
@@ -36,10 +37,32 @@ class ChartComponent:
         fig = go.Figure()
 
         # Add percentile bands
-        fig.add_trace(go.Scatter(x=x, y=result.p90_path, name="P90", line=dict(color="#9ecae1"), fill=None))
-        fig.add_trace(go.Scatter(x=x, y=result.median_path, name="Median", line=dict(color="#3182bd", width=2)))
         fig.add_trace(
-            go.Scatter(x=x, y=result.p10_path, name="P10", line=dict(color="#9ecae1"), fill="tonexty", fillcolor="rgba(158, 202, 225, 0.3)")
+            go.Scatter(
+                x=x,
+                y=result.p90_path,
+                name="P90",
+                line=dict(color="#9ecae1"),
+                fill=None,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=result.median_path,
+                name="Median",
+                line=dict(color="#3182bd", width=2),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=result.p10_path,
+                name="P10",
+                line=dict(color="#9ecae1"),
+                fill="tonexty",
+                fillcolor="rgba(158, 202, 225, 0.3)",
+            )
         )
 
         # Add sample individual paths (fewer for Monte Carlo, more for Historical)
@@ -49,7 +72,9 @@ class ChartComponent:
             if "Monte Carlo" in title:
                 n_sample_paths = min(10, len(result.sample_paths))  # Fewer MC paths
             else:
-                n_sample_paths = min(30, len(result.sample_paths))  # More historical paths
+                n_sample_paths = min(
+                    30, len(result.sample_paths)
+                )  # More historical paths
 
             for i in range(n_sample_paths):
                 # Different styling for Monte Carlo vs Historical
@@ -66,13 +91,21 @@ class ChartComponent:
                     go.Scatter(
                         x=x,
                         y=result.sample_paths[i],
-                        name=f"Sample {i+1}" if i < 3 else None,  # Only show legend for first 3
+                        name=(
+                            f"Sample {i+1}" if i < 3 else None
+                        ),  # Only show legend for first 3
                         line=dict(color=line_color, width=line_width),
                         showlegend=i < 3,
                     )
                 )
 
-        fig.update_layout(title=title, xaxis_title="Years", yaxis_title="Portfolio Value ($)", hovermode="x unified", showlegend=True)
+        fig.update_layout(
+            title=title,
+            xaxis_title="Years",
+            yaxis_title="Portfolio Value ($)",
+            hovermode="x unified",
+            showlegend=True,
+        )
 
         st.plotly_chart(fig, use_container_width=True)
 
@@ -100,24 +133,16 @@ class ChartComponent:
         labels = ["P10", "P25", "P50", "P75", "P90"]
 
         # Get percentile values
-        percentile_values = [np.percentile(result.terminal_balances, p) for p in percentiles]
+        percentile_values = [
+            np.percentile(result.terminal_balances, p) for p in percentiles
+        ]
 
         # Calculate y positions to avoid overlap
-        max_count = max(
-            [
-                len(
-                    [
-                        x
-                        for x in result.terminal_balances
-                        if abs(x - val) < (result.terminal_balances.max() - result.terminal_balances.min()) / n_bins
-                    ]
-                )
-                for val in percentile_values
-            ]
-        )
         y_positions = [0.9, 0.8, 0.7, 0.6, 0.5]  # Staggered y positions
 
-        for i, (p, color, label, value, y_pos) in enumerate(zip(percentiles, colors, labels, percentile_values, y_positions)):
+        for i, (p, color, label, value, y_pos) in enumerate(
+            zip(percentiles, colors, labels, percentile_values, y_positions)
+        ):
             fig.add_vline(
                 x=value,
                 line_dash="solid",
@@ -159,24 +184,69 @@ class ChartComponent:
 
         st.plotly_chart(fig, use_container_width=True)
 
-    def plot_comparison_chart(self, historical_result: SimulationResult, mc_result: SimulationResult) -> None:
+    def plot_comparison_chart(
+        self, historical_result: SimulationResult, mc_result: SimulationResult
+    ) -> None:
         """Plot comparison between historical and Monte Carlo results."""
-        x_hist = np.arange(historical_result.horizon_periods) / historical_result.periods_per_year
+        x_hist = (
+            np.arange(historical_result.horizon_periods)
+            / historical_result.periods_per_year
+        )
         x_mc = np.arange(mc_result.horizon_periods) / mc_result.periods_per_year
 
         fig = go.Figure()
 
         # Historical paths
         fig.add_trace(
-            go.Scatter(x=x_hist, y=historical_result.median_path, name="Historical Median", line=dict(color="#3182bd", dash="solid"))
+            go.Scatter(
+                x=x_hist,
+                y=historical_result.median_path,
+                name="Historical Median",
+                line=dict(color="#3182bd", dash="solid"),
+            )
         )
-        fig.add_trace(go.Scatter(x=x_hist, y=historical_result.p90_path, name="Historical P90", line=dict(color="#9ecae1", dash="dash")))
-        fig.add_trace(go.Scatter(x=x_hist, y=historical_result.p10_path, name="Historical P10", line=dict(color="#9ecae1", dash="dash")))
+        fig.add_trace(
+            go.Scatter(
+                x=x_hist,
+                y=historical_result.p90_path,
+                name="Historical P90",
+                line=dict(color="#9ecae1", dash="dash"),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x_hist,
+                y=historical_result.p10_path,
+                name="Historical P10",
+                line=dict(color="#9ecae1", dash="dash"),
+            )
+        )
 
         # Monte Carlo paths
-        fig.add_trace(go.Scatter(x=x_mc, y=mc_result.median_path, name="Monte Carlo Median", line=dict(color="#31a354", dash="solid")))
-        fig.add_trace(go.Scatter(x=x_mc, y=mc_result.p90_path, name="Monte Carlo P90", line=dict(color="#c7e9c0", dash="dash")))
-        fig.add_trace(go.Scatter(x=x_mc, y=mc_result.p10_path, name="Monte Carlo P10", line=dict(color="#c7e9c0", dash="dash")))
+        fig.add_trace(
+            go.Scatter(
+                x=x_mc,
+                y=mc_result.median_path,
+                name="Monte Carlo Median",
+                line=dict(color="#31a354", dash="solid"),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x_mc,
+                y=mc_result.p90_path,
+                name="Monte Carlo P90",
+                line=dict(color="#c7e9c0", dash="dash"),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x_mc,
+                y=mc_result.p10_path,
+                name="Monte Carlo P10",
+                line=dict(color="#c7e9c0", dash="dash"),
+            )
+        )
 
         fig.update_layout(
             title="Historical vs Monte Carlo Comparison",

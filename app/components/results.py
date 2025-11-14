@@ -1,10 +1,11 @@
 """Results display component."""
 
-import streamlit as st
-import pandas as pd
 import numpy as np
+import pandas as pd
+import streamlit as st
+
 from app.schemas import SimulationResult
-from app.utils import format_percentage, format_currency
+from app.utils import format_currency, format_percentage
 
 
 class ResultsComponent:
@@ -20,34 +21,51 @@ class ResultsComponent:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.metric("Success Rate", format_percentage(result.success_rate), help="Percentage of scenarios where portfolio didn't deplete")
+            st.metric(
+                "Success Rate",
+                format_percentage(result.success_rate),
+                help="Percentage of scenarios where portfolio didn't deplete",
+            )
 
         with col2:
             median_terminal = np.median(result.terminal_balances)
             st.metric(
-                "Median Terminal Wealth", format_currency(median_terminal), help="Median portfolio value at the end of the simulation"
+                "Median Terminal Wealth",
+                format_currency(median_terminal),
+                help="Median portfolio value at the end of the simulation",
             )
 
         with col3:
             if result.data_limited:
                 st.metric(
-                    "Data Used", f"{result.available_years:.1f} years", help="Years of historical data used (may be less than requested)"
+                    "Data Used",
+                    f"{result.available_years:.1f} years",
+                    help="Years of historical data used (may be less than requested)",
                 )
             else:
                 st.metric(
-                    "Simulation Period", f"{result.horizon_periods / result.periods_per_year:.1f} years", help="Total simulation period"
+                    "Simulation Period",
+                    f"{result.horizon_periods / result.periods_per_year:.1f} years",
+                    help="Total simulation period",
                 )
 
     def display_data_warning(self, result: SimulationResult, total_years: int) -> None:
         """Display warning about data limitations."""
         if result.data_limited:
             st.info(
-                f"📊 Using {result.available_years:.1f} years of available data " f"(scaled down from {total_years:.0f} years requested)"
+                f"📊 Using {result.available_years:.1f} years of available data "
+                f"(scaled down from {total_years:.0f} years requested)"
             )
-            st.caption("Note: Retirement planning phases have been proportionally scaled to fit available data.")
+            st.caption(
+                "Note: Retirement planning phases have been proportionally scaled to fit available data."
+            )
 
     def display_summary_table(
-        self, inputs: dict, historical_result: SimulationResult, mc_result: SimulationResult, hybrid_result: SimulationResult = None
+        self,
+        inputs: dict,
+        historical_result: SimulationResult,
+        mc_result: SimulationResult,
+        hybrid_result: SimulationResult = None,
     ) -> None:
         """Display summary table of inputs and results."""
         st.subheader("Summary")

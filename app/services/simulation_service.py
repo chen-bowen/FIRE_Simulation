@@ -12,11 +12,20 @@ Key features:
 - Success rate calculations and percentile analysis
 """
 
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional
-from app.schemas import SimulationParams, SimulationResult, SimulationError, PortfolioState
+
+from app.schemas import (
+    PortfolioState,
+    SimulationError,
+    SimulationParams,
+    SimulationResult,
+)
 from app.utils import periods_per_year
+
+from .data_service import DataService
 from .portfolio_service import PortfolioService
 
 
@@ -38,6 +47,8 @@ class SimulationService:
     def __init__(self):
         # Initialize portfolio service for portfolio math operations
         self.portfolio_service = PortfolioService()
+        # Initialize data service for CPI data
+        self.data_service = DataService()
 
     def run_historical_simulation(
         self,
@@ -60,11 +71,43 @@ class SimulationService:
             ppy = periods_per_year(params.frequency)
             total_periods = (params.pre_retire_years + params.retire_years) * ppy
 
+            # Handle dynamic withdrawal vs fixed spending
+            use_dynamic_withdrawal = params.withdrawal_params is not None
+            initial_category_spending: Optional[Dict[str, float]] = None
+            cpi_inflation_rates: Optional[pd.Series] = None
+
+            if use_dynamic_withdrawal:
+                # Calculate initial category spending
+                initial_category_spending = (
+                    self.portfolio_service.calculate_initial_category_spending(
+                        params.withdrawal_params
+                    )
+                )
+                # Load CPI inflation rates for historical simulation
+                if params.withdrawal_params.use_cpi_adjustment:
+                    try:
+                        cpi_inflation_rates = (
+                            self.data_service.calculate_inflation_rates()
+                        )
+                    except Exception as e:
+                        print(
+                            f"Warning: Could not load CPI data: {e}. Using default inflation."
+                        )
+                        cpi_inflation_rates = None
+                # Fallback to fixed spending for calculation
+                total_annual_spend = sum(initial_category_spending.values())
+            else:
+                total_annual_spend = params.annual_spend
+
             # Calculate per-period amounts
-            contrib_pp, spend_pp_nominal_year1 = self.portfolio_service.calculate_period_amounts(
-                params.annual_contrib, params.annual_spend, params.frequency
+            contrib_pp, spend_pp_nominal_year1 = (
+                self.portfolio_service.calculate_period_amounts(
+                    params.annual_contrib, total_annual_spend, params.frequency
+                )
             )
-            inflation_pp = self.portfolio_service.calculate_inflation_factor(params.inflation_rate_annual, params.frequency)
+            inflation_pp = self.portfolio_service.calculate_inflation_factor(
+                params.inflation_rate_annual, params.frequency
+            )
 
             # Build portfolio returns
             asset_returns = returns_df.to_numpy()
@@ -99,7 +142,9 @@ class SimulationService:
 
             # If we don't have enough data for rolling windows, use bootstrap sampling
             if max_starts < 100:
-                print(f"Warning: Limited historical data. Using bootstrap sampling to generate {min(500, max_starts * 5)} scenarios.")
+                print(
+                    f"Warning: Limited historical data. Using bootstrap sampling to generate {min(500, max_starts * 5)} scenarios."
+                )
                 max_starts = min(500, max_starts * 5)
                 use_bootstrap = True
             else:
@@ -111,16 +156,22 @@ class SimulationService:
                     # Use different strategies for better variation
                     if start % 3 == 0:
                         # Random start point
-                        bootstrap_start = np.random.randint(0, len(asset_returns) - actual_periods + 1)
+                        bootstrap_start = np.random.randint(
+                            0, len(asset_returns) - actual_periods + 1
+                        )
                     elif start % 3 == 1:
                         # Staggered sampling (every nth point)
                         step = max(1, len(asset_returns) // 50)
-                        bootstrap_start = (start * step) % (len(asset_returns) - actual_periods + 1)
+                        bootstrap_start = (start * step) % (
+                            len(asset_returns) - actual_periods + 1
+                        )
                     else:
                         # Weighted sampling (prefer more recent data)
                         weights = np.arange(1, len(asset_returns) - actual_periods + 2)
                         weights = weights / weights.sum()
-                        bootstrap_start = np.random.choice(len(asset_returns) - actual_periods + 1, p=weights)
+                        bootstrap_start = np.random.choice(
+                            len(asset_returns) - actual_periods + 1, p=weights
+                        )
 
                     end = bootstrap_start + actual_periods
                     window_asset_returns = asset_returns[bootstrap_start:end]
@@ -144,17 +195,65 @@ class SimulationService:
                     # Determine phase - scale down proportionally if data is limited
                     if actual_periods < total_periods:
                         scale_factor = actual_periods / total_periods
-                        adjusted_pre_retire_periods = int(params.pre_retire_years * ppy * scale_factor)
+                        adjusted_pre_retire_periods = int(
+                            params.pre_retire_years * ppy * scale_factor
+                        )
                     else:
                         adjusted_pre_retire_periods = params.pre_retire_years * ppy
 
                     in_accumulation = i < adjusted_pre_retire_periods
 
+                    # Calculate spending for this period
+                    if not in_accumulation and use_dynamic_withdrawal:
+                        # Calculate years into retirement
+                        periods_into_retirement = i - adjusted_pre_retire_periods
+                        years_into_retirement = periods_into_retirement / ppy
+
+                        # Get inflation rate for this year (use CPI if available)
+                        if (
+                            cpi_inflation_rates is not None
+                            and date_i.year in cpi_inflation_rates.index
+                        ):
+                            # Use actual historical CPI inflation rate for this year
+                            year_inflation_rate = float(
+                                cpi_inflation_rates.loc[date_i.year]
+                            )
+                        else:
+                            # Fallback to default inflation rate
+                            year_inflation_rate = params.inflation_rate_annual
+
+                        # Calculate dynamic withdrawal for this year
+                        annual_withdrawal = (
+                            self.portfolio_service.calculate_dynamic_withdrawal(
+                                params.withdrawal_params,
+                                initial_category_spending,
+                                years_into_retirement,
+                                year_inflation_rate,
+                                params.frequency,
+                            )
+                        )
+
+                        # Convert to per-period amount
+                        spend_pp = self.portfolio_service.calculate_period_withdrawal(
+                            annual_withdrawal, params.frequency, params.pacing, i
+                        )
+
                     # Handle different pacing modes
-                    if params.frequency == "daily" and params.pacing == "monthly-boundary":
-                        is_month_boundary = (i == 0) or (dates[i - 1].month != date_i.month)
-                        contrib = (contrib_pp if in_accumulation and is_month_boundary else 0.0) * (ppy / 12)
-                        spend = (0.0 if in_accumulation else (spend_pp if is_month_boundary else 0.0)) * (ppy / 12)
+                    if (
+                        params.frequency == "daily"
+                        and params.pacing == "monthly-boundary"
+                    ):
+                        is_month_boundary = (i == 0) or (
+                            dates[i - 1].month != date_i.month
+                        )
+                        contrib = (
+                            contrib_pp if in_accumulation and is_month_boundary else 0.0
+                        ) * (ppy / 12)
+                        spend = (
+                            0.0
+                            if in_accumulation
+                            else (spend_pp if is_month_boundary else 0.0)
+                        ) * (ppy / 12)
                     else:
                         contrib = contrib_pp if in_accumulation else 0.0
                         spend = 0.0 if in_accumulation else spend_pp
@@ -162,9 +261,13 @@ class SimulationService:
                     # Step portfolio
                     # Debug: Check shapes before calling step_portfolio
                     if i == 0:  # Only debug first iteration
-                        print(f"Debug - window_asset_returns[i] shape: {window_asset_returns[i].shape}")
+                        print(
+                            f"Debug - window_asset_returns[i] shape: {window_asset_returns[i].shape}"
+                        )
                         print(f"Debug - weights shape: {weights.shape}")
-                        print(f"Debug - window_asset_returns[i]: {window_asset_returns[i]}")
+                        print(
+                            f"Debug - window_asset_returns[i]: {window_asset_returns[i]}"
+                        )
                         print(f"Debug - weights: {weights}")
 
                     state = self.portfolio_service.step_portfolio(
@@ -172,17 +275,24 @@ class SimulationService:
                         contrib=contrib,
                         spend=spend,
                         inflation_rate_annual=params.inflation_rate_annual,
-                        period_return=window_asset_returns[i],  # Individual asset returns for this period
+                        period_return=window_asset_returns[
+                            i
+                        ],  # Individual asset returns for this period
                         period_index=date_i,
                         prev_index=prev_date,
                         freq=params.frequency,
                     )
                     balances[i] = state.balance
 
-                    # Inflate spending
-                    if not in_accumulation:
-                        if params.frequency == "daily" and params.pacing == "monthly-boundary":
-                            is_month_boundary = (i == 0) or (dates[i - 1].month != date_i.month)
+                    # Inflate spending (only for fixed spending mode)
+                    if not in_accumulation and not use_dynamic_withdrawal:
+                        if (
+                            params.frequency == "daily"
+                            and params.pacing == "monthly-boundary"
+                        ):
+                            is_month_boundary = (i == 0) or (
+                                dates[i - 1].month != date_i.month
+                            )
                             if is_month_boundary:
                                 spend_pp *= (1.0 + inflation_pp) ** (ppy / 12)
                         else:
@@ -206,7 +316,9 @@ class SimulationService:
             sample_paths = None
             if len(balances_over_time) > 0:
                 n_samples = min(100, len(balances_over_time))
-                sample_indices = np.random.choice(len(balances_over_time), n_samples, replace=False)
+                sample_indices = np.random.choice(
+                    len(balances_over_time), n_samples, replace=False
+                )
                 sample_paths = np.array([balances_over_time[i] for i in sample_indices])
 
             return SimulationResult(
@@ -254,11 +366,43 @@ class SimulationService:
             ppy = periods_per_year(params.frequency)
             total_periods = (params.pre_retire_years + params.retire_years) * ppy
 
+            # Handle dynamic withdrawal vs fixed spending
+            use_dynamic_withdrawal = params.withdrawal_params is not None
+            initial_category_spending: Optional[Dict[str, float]] = None
+            avg_inflation_rate = params.inflation_rate_annual
+
+            if use_dynamic_withdrawal:
+                # Calculate initial category spending
+                initial_category_spending = (
+                    self.portfolio_service.calculate_initial_category_spending(
+                        params.withdrawal_params
+                    )
+                )
+                # Get average CPI inflation rate for Monte Carlo
+                if params.withdrawal_params.use_cpi_adjustment:
+                    try:
+                        avg_inflation_rate = (
+                            self.data_service.get_average_inflation_rate()
+                        )
+                    except Exception as e:
+                        print(
+                            f"Warning: Could not load CPI data: {e}. Using default inflation."
+                        )
+                        avg_inflation_rate = params.inflation_rate_annual
+                # Fallback to fixed spending for calculation
+                total_annual_spend = sum(initial_category_spending.values())
+            else:
+                total_annual_spend = params.annual_spend
+
             # Calculate per-period amounts
-            contrib_pp, spend_pp_nominal_year1 = self.portfolio_service.calculate_period_amounts(
-                params.annual_contrib, params.annual_spend, params.frequency
+            contrib_pp, spend_pp_nominal_year1 = (
+                self.portfolio_service.calculate_period_amounts(
+                    params.annual_contrib, total_annual_spend, params.frequency
+                )
             )
-            inflation_pp = self.portfolio_service.calculate_inflation_factor(params.inflation_rate_annual, params.frequency)
+            inflation_pp = self.portfolio_service.calculate_inflation_factor(
+                avg_inflation_rate, params.frequency
+            )
 
             # Cholesky decomposition for correlation
             L = np.linalg.cholesky(cov + 1e-12 * np.eye(cov.shape[0]))
@@ -278,32 +422,72 @@ class SimulationService:
 
                 # Debug: Print first few returns to verify randomness
                 if p == 0:
-                    print(f"Monte Carlo path {p}: First 5 returns = {portfolio_returns[:5]}")
+                    print(
+                        f"Monte Carlo path {p}: First 5 returns = {portfolio_returns[:5]}"
+                    )
                     print(f"Random seed used: {seed}")
-                    print(f"Monte Carlo simulation type: RANDOM GENERATED")
+                    print("Monte Carlo simulation type: RANDOM GENERATED")
 
                 for i in range(total_periods):
                     in_accumulation = i < params.pre_retire_years * ppy
 
+                    # Calculate spending for this period
+                    if not in_accumulation and use_dynamic_withdrawal:
+                        # Calculate years into retirement
+                        periods_into_retirement = i - params.pre_retire_years * ppy
+                        years_into_retirement = periods_into_retirement / ppy
+
+                        # Calculate dynamic withdrawal using average inflation rate
+                        annual_withdrawal = (
+                            self.portfolio_service.calculate_dynamic_withdrawal(
+                                params.withdrawal_params,
+                                initial_category_spending,
+                                years_into_retirement,
+                                avg_inflation_rate,
+                                params.frequency,
+                            )
+                        )
+
+                        # Convert to per-period amount
+                        spend_pp = self.portfolio_service.calculate_period_withdrawal(
+                            annual_withdrawal, params.frequency, params.pacing, i
+                        )
+
                     # Handle different pacing modes
-                    if params.frequency == "daily" and params.pacing == "monthly-boundary":
+                    if (
+                        params.frequency == "daily"
+                        and params.pacing == "monthly-boundary"
+                    ):
                         is_month_boundary = i % (ppy // 12) == 0
-                        contrib = (contrib_pp if in_accumulation and is_month_boundary else 0.0) * (ppy / 12)
-                        spend = (0.0 if in_accumulation else (spend_pp if is_month_boundary else 0.0)) * (ppy / 12)
+                        contrib = (
+                            contrib_pp if in_accumulation and is_month_boundary else 0.0
+                        ) * (ppy / 12)
+                        spend = (
+                            0.0
+                            if in_accumulation
+                            else (spend_pp if is_month_boundary else 0.0)
+                        ) * (ppy / 12)
                     else:
                         contrib = contrib_pp if in_accumulation else 0.0
                         spend = 0.0 if in_accumulation else spend_pp
 
                     # Step portfolio
                     state = PortfolioState(
-                        balance=max(0.0, (state.balance + contrib - spend) * (1.0 + portfolio_returns[i])),
+                        balance=max(
+                            0.0,
+                            (state.balance + contrib - spend)
+                            * (1.0 + portfolio_returns[i]),
+                        ),
                         weights=state.weights,
                     )
                     all_paths[p, i] = state.balance
 
-                    # Inflate spending
-                    if not in_accumulation:
-                        if params.frequency == "daily" and params.pacing == "monthly-boundary":
+                    # Inflate spending (only for fixed spending mode)
+                    if not in_accumulation and not use_dynamic_withdrawal:
+                        if (
+                            params.frequency == "daily"
+                            and params.pacing == "monthly-boundary"
+                        ):
                             if i % (ppy // 12) == 0:
                                 spend_pp *= (1.0 + inflation_pp) ** (ppy / 12)
                         else:
@@ -339,7 +523,7 @@ class SimulationService:
         except Exception as e:
             raise SimulationError(f"Monte Carlo simulation failed: {str(e)}")
 
-    def run_hybrid_simulation(
+    def run_simulation(
         self,
         returns_df: pd.DataFrame,
         weights: np.ndarray,
@@ -347,198 +531,244 @@ class SimulationService:
         n_paths: int = 1000,
         seed: Optional[int] = None,
     ) -> SimulationResult:
-        """Run hybrid simulation combining historical and Monte Carlo approaches."""
+        """
+        Run simulation: historical backtest for accumulation, Monte Carlo for retirement.
+
+        This method:
+        1. Uses actual historical market data for the accumulation phase (pre-retirement)
+        2. Projects forward using Monte Carlo for the retirement phase (post-retirement)
+        3. Combines both phases into complete simulation paths
+        """
         try:
             ppy = periods_per_year(params.frequency)
-            total_periods = (params.pre_retire_years + params.retire_years) * ppy
+            pre_retire_periods = params.pre_retire_years * ppy
+            retire_periods = params.retire_years * ppy
+            total_periods = pre_retire_periods + retire_periods
+
+            # Handle dynamic withdrawal vs fixed spending
+            use_dynamic_withdrawal = params.withdrawal_params is not None
+            initial_category_spending: Optional[Dict[str, float]] = None
+            avg_inflation_rate = params.inflation_rate_annual
+
+            if use_dynamic_withdrawal:
+                # Calculate initial category spending
+                initial_category_spending = (
+                    self.portfolio_service.calculate_initial_category_spending(
+                        params.withdrawal_params
+                    )
+                )
+                # Get average CPI inflation rate for Monte Carlo retirement phase
+                if params.withdrawal_params.use_cpi_adjustment:
+                    try:
+                        avg_inflation_rate = (
+                            self.data_service.get_average_inflation_rate()
+                        )
+                    except Exception as e:
+                        print(
+                            f"Warning: Could not load CPI data: {e}. Using default inflation."
+                        )
+                        avg_inflation_rate = params.inflation_rate_annual
+                # Fallback to fixed spending for calculation
+                total_annual_spend = sum(initial_category_spending.values())
+            else:
+                total_annual_spend = params.annual_spend
 
             # Calculate per-period amounts
-            contrib_pp, spend_pp_nominal_year1 = self.portfolio_service.calculate_period_amounts(
-                params.annual_contrib, params.annual_spend, params.frequency
-            )
-            inflation_pp = self.portfolio_service.calculate_inflation_factor(params.inflation_rate_annual, params.frequency)
-
-            # Use available data length, adjusting simulation parameters if needed
-            available_periods = len(returns_df) - 1
-            actual_periods = min(total_periods, available_periods)
-
-            # Adjust simulation parameters to fit available data
-            if actual_periods < total_periods:
-                available_years = available_periods / ppy
-                requested_years = total_periods / ppy
-                print(
-                    f"Warning: Only {available_years:.1f} years of data available, "
-                    f"but {requested_years:.1f} years requested. Using {available_years:.1f} years."
+            contrib_pp, spend_pp_nominal_year1 = (
+                self.portfolio_service.calculate_period_amounts(
+                    params.annual_contrib, total_annual_spend, params.frequency
                 )
+            )
+            inflation_pp = self.portfolio_service.calculate_inflation_factor(
+                avg_inflation_rate, params.frequency
+            )
 
             # Get historical asset returns
             asset_returns = returns_df.to_numpy()
+            available_periods = len(asset_returns) - 1
 
-            # Debug: Check data shapes
-            print(f"Debug - returns_df shape: {returns_df.shape}")
-            print(f"Debug - returns_df columns: {list(returns_df.columns)}")
-            print(f"Debug - asset_returns shape: {asset_returns.shape}")
-            print(f"Debug - weights shape: {weights.shape}")
-            print(f"Debug - weights: {weights}")
+            # Check if we have enough historical data for accumulation phase
+            if available_periods < pre_retire_periods:
+                print(
+                    f"Warning: Only {available_periods / ppy:.1f} years of historical data available, "
+                    f"but {params.pre_retire_years} years needed for accumulation. "
+                    f"Using available data and extending with Monte Carlo."
+                )
+                actual_pre_retire_periods = available_periods
+            else:
+                actual_pre_retire_periods = pre_retire_periods
 
-            # Calculate historical moments for calibration
+            # Calculate historical moments for Monte Carlo calibration
             means = np.mean(asset_returns, axis=0)
             cov = np.cov(asset_returns.T)
 
-            # Run hybrid simulation: 50% historical, 50% Monte Carlo
-            n_historical = n_paths // 2
-            n_mc = n_paths - n_historical
+            # Cholesky decomposition for Monte Carlo
+            L = np.linalg.cholesky(cov + 1e-12 * np.eye(cov.shape[0]))
+
+            # Determine number of historical start points
+            max_historical_starts = min(
+                n_paths, available_periods - actual_pre_retire_periods + 1
+            )
+            if max_historical_starts < 1:
+                max_historical_starts = 1
+                use_bootstrap = True
+            else:
+                use_bootstrap = False
 
             balances_over_time: List[np.ndarray] = []
             terminal_balances: List[float] = []
             success_count = 0
 
-            # Historical portion - determine sampling strategy
-            max_starts = min(n_historical, len(asset_returns) - actual_periods)
-
-            # If we don't have enough data for rolling windows, use bootstrap sampling
-            if max_starts < 50:
-                print(
-                    f"Warning: Limited historical data for hybrid. Using bootstrap sampling to generate {min(200, max_starts * 3)} scenarios."
-                )
-                max_starts = min(200, max_starts * 3)
-                use_bootstrap = True
+            # Initialize random number generator for Monte Carlo portion
+            if seed is not None:
+                rng = np.random.default_rng(seed)
             else:
-                use_bootstrap = False
-            for start in range(max_starts):
+                rng = np.random.default_rng()
+
+            # Generate simulation paths
+            for path_idx in range(n_paths):
+                # Select historical start point for accumulation phase
                 if use_bootstrap:
-                    # Bootstrap sampling: randomly select starting points with replacement
-                    # Use different strategies for better variation
-                    if start % 3 == 0:
-                        # Random start point
-                        bootstrap_start = np.random.randint(0, len(asset_returns) - actual_periods + 1)
-                    elif start % 3 == 1:
-                        # Staggered sampling (every nth point)
-                        step = max(1, len(asset_returns) // 50)
-                        bootstrap_start = (start * step) % (len(asset_returns) - actual_periods + 1)
+                    # Bootstrap sampling: randomly select starting points
+                    if path_idx % 3 == 0:
+                        historical_start = rng.integers(
+                            0, available_periods - actual_pre_retire_periods + 1
+                        )
+                    elif path_idx % 3 == 1:
+                        # Staggered sampling
+                        step = max(1, available_periods // 50)
+                        historical_start = (path_idx * step) % (
+                            available_periods - actual_pre_retire_periods + 1
+                        )
                     else:
                         # Weighted sampling (prefer more recent data)
-                        weights = np.arange(1, len(asset_returns) - actual_periods + 2)
-                        weights = weights / weights.sum()
-                        bootstrap_start = np.random.choice(len(asset_returns) - actual_periods + 1, p=weights)
-
-                    end = bootstrap_start + actual_periods
-                    window_asset_returns = asset_returns[bootstrap_start:end]
-                    dates = returns_df.index[bootstrap_start:end]
+                        weights_arr = np.arange(
+                            1, available_periods - actual_pre_retire_periods + 2
+                        )
+                        weights_arr = weights_arr / weights_arr.sum()
+                        historical_start = rng.choice(
+                            available_periods - actual_pre_retire_periods + 1,
+                            p=weights_arr,
+                        )
                 else:
-                    # Standard rolling window with step size for more variation
-                    step = max(1, (len(asset_returns) - actual_periods) // max_starts)
-                    adjusted_start = start * step
-                    end = adjusted_start + actual_periods
-                    window_asset_returns = asset_returns[adjusted_start:end]
-                    dates = returns_df.index[adjusted_start:end]
+                    # Rolling window with step size
+                    step = max(
+                        1,
+                        (available_periods - actual_pre_retire_periods)
+                        // max_historical_starts,
+                    )
+                    historical_start = (path_idx % max_historical_starts) * step
 
+                historical_end = historical_start + actual_pre_retire_periods
+
+                # Extract historical returns for accumulation phase
+                historical_returns = asset_returns[historical_start:historical_end]
+                historical_dates = returns_df.index[historical_start:historical_end]
+
+                # Initialize portfolio state
                 state = PortfolioState(balance=params.initial_balance, weights=weights)
-                balances = np.zeros(actual_periods)
+                balances = np.zeros(total_periods)
                 spend_pp = spend_pp_nominal_year1
                 prev_date = None
 
-                for i in range(actual_periods):
-                    date_i = dates[i]
-
-                    # Determine phase
-                    if actual_periods < total_periods:
-                        scale_factor = actual_periods / total_periods
-                        adjusted_pre_retire_periods = int(params.pre_retire_years * ppy * scale_factor)
-                    else:
-                        adjusted_pre_retire_periods = params.pre_retire_years * ppy
-
-                    in_accumulation = i < adjusted_pre_retire_periods
+                # PHASE 1: Historical accumulation phase (pre-retirement)
+                for i in range(actual_pre_retire_periods):
+                    date_i = historical_dates[i] if i < len(historical_dates) else None
 
                     # Handle different pacing modes
-                    if params.frequency == "daily" and params.pacing == "monthly-boundary":
-                        is_month_boundary = (i == 0) or (dates[i - 1].month != date_i.month)
-                        contrib = (contrib_pp if in_accumulation and is_month_boundary else 0.0) * (ppy / 12)
-                        spend = (0.0 if in_accumulation else (spend_pp if is_month_boundary else 0.0)) * (ppy / 12)
+                    if (
+                        params.frequency == "daily"
+                        and params.pacing == "monthly-boundary"
+                    ):
+                        is_month_boundary = (i == 0) or (
+                            historical_dates[i - 1].month != date_i.month
+                        )
+                        contrib = contrib_pp if is_month_boundary else 0.0
+                        contrib *= ppy / 12
                     else:
-                        contrib = contrib_pp if in_accumulation else 0.0
-                        spend = 0.0 if in_accumulation else spend_pp
+                        contrib = contrib_pp
 
-                    # Step portfolio
+                    # Step portfolio with historical returns
                     state = self.portfolio_service.step_portfolio(
                         state=state,
                         contrib=contrib,
-                        spend=spend,
+                        spend=0.0,  # No spending during accumulation
                         inflation_rate_annual=params.inflation_rate_annual,
-                        period_return=window_asset_returns[i],
+                        period_return=historical_returns[i],
                         period_index=date_i,
                         prev_index=prev_date,
                         freq=params.frequency,
                     )
                     balances[i] = state.balance
-
-                    # Inflate spending
-                    if not in_accumulation:
-                        if params.frequency == "daily" and params.pacing == "monthly-boundary":
-                            is_month_boundary = (i == 0) or (dates[i - 1].month != date_i.month)
-                            if is_month_boundary:
-                                spend_pp *= (1.0 + inflation_pp) ** (ppy / 12)
-                        else:
-                            spend_pp *= 1.0 + inflation_pp
-
                     prev_date = date_i
 
-                balances_over_time.append(balances)
-                terminal_balances.append(state.balance)
-                success_count += 1 if state.balance > 0 else 0
+                # PHASE 2: Monte Carlo retirement phase (post-retirement)
+                # Generate random returns for retirement period
+                z = rng.standard_normal(size=(retire_periods, means.shape[0]))
+                correlated = z @ L.T
+                mc_returns = correlated + means
 
-            # Monte Carlo portion
-            if seed is not None:
-                np.random.seed(seed)
+                for i in range(retire_periods):
+                    period_idx = actual_pre_retire_periods + i
+                    years_into_retirement = i / ppy
 
-            for _ in range(n_mc):
-                # Generate random returns using historical moments
-                random_returns = np.random.multivariate_normal(means, cov, actual_periods)
+                    # Calculate spending for this period
+                    if use_dynamic_withdrawal:
+                        # Calculate dynamic withdrawal using average inflation rate
+                        annual_withdrawal = (
+                            self.portfolio_service.calculate_dynamic_withdrawal(
+                                params.withdrawal_params,
+                                initial_category_spending,
+                                years_into_retirement,
+                                avg_inflation_rate,
+                                params.frequency,
+                            )
+                        )
 
-                state = PortfolioState(balance=params.initial_balance, weights=weights)
-                balances = np.zeros(actual_periods)
-                spend_pp = spend_pp_nominal_year1
-
-                for i in range(actual_periods):
-                    # Determine phase
-                    if actual_periods < total_periods:
-                        scale_factor = actual_periods / total_periods
-                        adjusted_pre_retire_periods = int(params.pre_retire_years * ppy * scale_factor)
+                        # Convert to per-period amount
+                        spend_pp = self.portfolio_service.calculate_period_withdrawal(
+                            annual_withdrawal,
+                            params.frequency,
+                            params.pacing,
+                            period_idx,
+                        )
                     else:
-                        adjusted_pre_retire_periods = params.pre_retire_years * ppy
-
-                    in_accumulation = i < adjusted_pre_retire_periods
+                        # Fixed spending with inflation adjustment
+                        if i == 0:
+                            spend_pp = spend_pp_nominal_year1
+                        else:
+                            if (
+                                params.frequency == "daily"
+                                and params.pacing == "monthly-boundary"
+                            ):
+                                if i % (ppy // 12) == 0:
+                                    spend_pp *= (1.0 + inflation_pp) ** (ppy / 12)
+                            else:
+                                spend_pp *= 1.0 + inflation_pp
 
                     # Handle different pacing modes
-                    if params.frequency == "daily" and params.pacing == "monthly-boundary":
+                    if (
+                        params.frequency == "daily"
+                        and params.pacing == "monthly-boundary"
+                    ):
                         is_month_boundary = (i % (ppy // 12)) == 0
-                        contrib = (contrib_pp if in_accumulation and is_month_boundary else 0.0) * (ppy / 12)
-                        spend = (0.0 if in_accumulation else (spend_pp if is_month_boundary else 0.0)) * (ppy / 12)
+                        spend = spend_pp if is_month_boundary else 0.0
+                        spend *= ppy / 12
                     else:
-                        contrib = contrib_pp if in_accumulation else 0.0
-                        spend = 0.0 if in_accumulation else spend_pp
+                        spend = spend_pp
 
-                    # Step portfolio
+                    # Step portfolio with Monte Carlo returns
                     state = self.portfolio_service.step_portfolio(
                         state=state,
-                        contrib=contrib,
+                        contrib=0.0,  # No contributions during retirement
                         spend=spend,
-                        inflation_rate_annual=params.inflation_rate_annual,
-                        period_return=random_returns[i],
-                        period_index=None,
+                        inflation_rate_annual=avg_inflation_rate,
+                        period_return=mc_returns[i],
+                        period_index=None,  # No date for Monte Carlo
                         prev_index=None,
                         freq=params.frequency,
                     )
-                    balances[i] = state.balance
-
-                    # Inflate spending
-                    if not in_accumulation:
-                        if params.frequency == "daily" and params.pacing == "monthly-boundary":
-                            is_month_boundary = (i % (ppy // 12)) == 0
-                            if is_month_boundary:
-                                spend_pp *= (1.0 + inflation_pp) ** (ppy / 12)
-                        else:
-                            spend_pp *= 1.0 + inflation_pp
+                    balances[period_idx] = state.balance
 
                 balances_over_time.append(balances)
                 terminal_balances.append(state.balance)
@@ -553,22 +783,22 @@ class SimulationService:
             success_rate = success_count / float(len(balances_over_time))
 
             # Debug information
-            print(f"Historical simulation: Generated {len(balances_over_time)} paths")
-            print(f"Terminal balance range: ${np.min(terminal_balances):,.0f} to ${np.max(terminal_balances):,.0f}")
+            print(f"Simulation: Generated {len(balances_over_time)} paths")
+            print(
+                f"Terminal balance range: ${np.min(terminal_balances):,.0f} to ${np.max(terminal_balances):,.0f}"
+            )
             print(f"Success rate: {success_rate:.1%}")
-            print(f"Sampling method: {'Bootstrap' if use_bootstrap else 'Rolling Windows'}")
-
-            # Debug: Show first path returns for comparison
-            if len(balances_over_time) > 0:
-                first_path = balances_over_time[0]
-                print(f"Historical first path: First 5 balances = {first_path[:5]}")
-                print(f"Historical simulation type: REAL MARKET DATA")
+            print(
+                f"Sampling method: {'Bootstrap' if use_bootstrap else 'Rolling Windows'}"
+            )
 
             # Store sample paths for visualization (up to 100 for better variation)
             sample_paths = None
             if len(balances_over_time) > 0:
                 n_samples = min(100, len(balances_over_time))
-                sample_indices = np.random.choice(len(balances_over_time), n_samples, replace=False)
+                sample_indices = rng.choice(
+                    len(balances_over_time), size=n_samples, replace=False
+                )
                 sample_paths = np.array([balances_over_time[i] for i in sample_indices])
 
             return SimulationResult(
@@ -578,12 +808,12 @@ class SimulationService:
                 p10_path=p10_path,
                 p90_path=p90_path,
                 periods_per_year=ppy,
-                horizon_periods=actual_periods,
+                horizon_periods=total_periods,
                 requested_periods=total_periods,
-                data_limited=actual_periods < total_periods,
-                available_years=actual_periods / ppy,
+                data_limited=available_periods < pre_retire_periods,
+                available_years=available_periods / ppy,
                 sample_paths=sample_paths,
             )
 
         except Exception as e:
-            raise SimulationError(f"Hybrid simulation failed: {str(e)}")
+            raise SimulationError(f"Simulation failed: {str(e)}")

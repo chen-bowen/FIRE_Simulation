@@ -1,8 +1,7 @@
 """Configuration management for the retirement planner app."""
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
-import os
+from typing import Dict, List
 
 
 @dataclass

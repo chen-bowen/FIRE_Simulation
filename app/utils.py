@@ -13,9 +13,10 @@ Key features:
 - Error handling with custom exceptions
 """
 
-import numpy as np
-import pandas as pd
 from typing import List, Tuple, Union
+
+import numpy as np
+
 from .schemas import ValidationError
 
 
@@ -36,12 +37,17 @@ def per_period_amount(annual_amount: float, freq: str) -> float:
     return annual_amount / float(periods_per_year(freq))
 
 
-def validate_weights(weights: Union[List[float], np.ndarray], n_assets: int) -> np.ndarray:
+def validate_weights(
+    weights: Union[List[float], np.ndarray], n_assets: int
+) -> np.ndarray:
     """Validate and normalize weights."""
     weights = np.array(weights, dtype=float)
 
     if len(weights) != n_assets:
-        raise ValidationError(f"Number of weights ({len(weights)}) must match " f"number of assets ({n_assets})")
+        raise ValidationError(
+            f"Number of weights ({len(weights)}) must match "
+            f"number of assets ({n_assets})"
+        )
 
     if np.any(weights < 0):
         raise ValidationError("Weights must be non-negative")
@@ -95,7 +101,9 @@ def format_percentage(value: float, decimals: int = 1) -> str:
     return f"{value*100:.{decimals}f}%"
 
 
-def calculate_horizon_years(current_age: int, retire_age: int, plan_until_age: int) -> Tuple[int, int]:
+def calculate_horizon_years(
+    current_age: int, retire_age: int, plan_until_age: int
+) -> Tuple[int, int]:
     """Calculate working and retirement years."""
     pre_retire_years = max(0, retire_age - current_age)
     retire_years = max(1, plan_until_age - retire_age)
@@ -114,7 +122,9 @@ def validate_age_inputs(current_age: int, retire_age: int, plan_until_age: int) 
         raise ValidationError("Plan until age must be greater than retirement age")
 
 
-def validate_financial_inputs(initial_balance: float, annual_contrib: float, annual_spend: float) -> None:
+def validate_financial_inputs(
+    initial_balance: float, annual_contrib: float, annual_spend: float
+) -> None:
     """Validate financial inputs."""
     if initial_balance < 0:
         raise ValidationError("Initial balance must be non-negative")
