@@ -58,8 +58,12 @@ def main():
         validate_age_inputs(
             inputs["current_age"], inputs["retire_age"], inputs["plan_until_age"]
         )
+        # Only validate annual_spend if not using dynamic withdrawal
+        annual_spend = (
+            inputs["annual_spend"] if inputs["annual_spend"] is not None else 0.0
+        )
         validate_financial_inputs(
-            inputs["initial_balance"], inputs["annual_contrib"], inputs["annual_spend"]
+            inputs["initial_balance"], inputs["annual_contrib"], annual_spend
         )
     except Exception as e:
         st.error(f"Input validation error: {str(e)}")

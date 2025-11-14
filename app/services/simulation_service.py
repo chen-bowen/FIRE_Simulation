@@ -167,10 +167,12 @@ class SimulationService:
                         )
                     else:
                         # Weighted sampling (prefer more recent data)
-                        weights = np.arange(1, len(asset_returns) - actual_periods + 2)
-                        weights = weights / weights.sum()
+                        sampling_weights = np.arange(
+                            1, len(asset_returns) - actual_periods + 2
+                        )
+                        sampling_weights = sampling_weights / sampling_weights.sum()
                         bootstrap_start = np.random.choice(
-                            len(asset_returns) - actual_periods + 1, p=weights
+                            len(asset_returns) - actual_periods + 1, p=sampling_weights
                         )
 
                     end = bootstrap_start + actual_periods

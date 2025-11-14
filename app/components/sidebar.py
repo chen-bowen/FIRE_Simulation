@@ -220,7 +220,7 @@ class SidebarComponent:
                 help="Your education level (optional, for future wage growth calculations)",
             )
 
-            if current_wage > 0 or education_level:
+            if withdrawal_params and (current_wage > 0 or education_level):
                 withdrawal_params.current_wage = (
                     current_wage if current_wage > 0 else None
                 )
