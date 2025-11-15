@@ -75,6 +75,103 @@ def main():
     )
     total_years = pre_retire_years + retire_years
 
+    # Display pre-simulation summary cards
+    st.markdown("---")
+    st.subheader("📊 Simulation Summary")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric(
+            "Years to Retirement",
+            f"{pre_retire_years}",
+            help="Years until retirement age",
+        )
+
+    with col2:
+        st.metric(
+            "Retirement Duration",
+            f"{retire_years} years",
+            help="Years from retirement to plan until age",
+        )
+
+    with col3:
+        annual_spend_display = inputs.get("annual_spend") or 0.0
+        if inputs.get("withdrawal_params"):
+            annual_spend_display = (
+                inputs["withdrawal_params"].total_annual_expense or 0.0
+            )
+        st.metric(
+            "Annual Spending",
+            f"${annual_spend_display:,.0f}",
+            help="Annual retirement spending",
+        )
+
+    with col4:
+        portfolio_summary = (
+            ", ".join(
+                [
+                    f"{w:.0f}% {asset}"
+                    for asset, w in st.session_state.get(
+                        "portfolio_weights", {}
+                    ).items()
+                    if w > 0
+                ]
+            )
+            if "portfolio_weights" in st.session_state
+            else "Not set"
+        )
+        st.metric(
+            "Portfolio",
+            (
+                portfolio_summary[:30] + "..."
+                if len(portfolio_summary) > 30
+                else portfolio_summary
+            ),
+            help="Portfolio allocation",
+        )
+
+    # Show input summary in expander
+    with st.expander("📋 View Input Summary", expanded=False):
+        summary_col1, summary_col2 = st.columns(2)
+
+        with summary_col1:
+            st.markdown("**Timeline**")
+            st.write(f"- Current Age: {inputs['current_age']}")
+            st.write(f"- Retirement Age: {inputs['retire_age']}")
+            st.write(f"- Plan Until Age: {inputs['plan_until_age']}")
+            st.write(f"- Total Planning Period: {total_years} years")
+
+            st.markdown("**Financial**")
+            st.write(f"- Initial Balance: ${inputs['initial_balance']:,.0f}")
+            st.write(f"- Annual Contribution: ${inputs['annual_contrib']:,.0f}")
+            if inputs.get("withdrawal_params"):
+                st.write(
+                    f"- Annual Spending: ${inputs['withdrawal_params'].total_annual_expense:,.0f}"
+                )
+                st.write(
+                    f"- CPI Adjustment: {'Yes' if inputs['withdrawal_params'].use_cpi_adjustment else 'No'}"
+                )
+            else:
+                st.write(f"- Annual Spending: ${inputs.get('annual_spend', 0):,.0f}")
+                st.write(f"- Inflation Rate: {inputs['inflation']*100:.2f}%")
+
+        with summary_col2:
+            st.markdown("**Portfolio**")
+            if "portfolio_weights" in st.session_state:
+                for asset, weight in st.session_state["portfolio_weights"].items():
+                    if weight > 0:
+                        st.write(f"- {asset}: {weight:.1f}%")
+            else:
+                st.write("- Not configured")
+
+            st.markdown("**Simulation Settings**")
+            st.write(f"- Frequency: {inputs['frequency'].title()}")
+            st.write(f"- Monte Carlo Paths: {inputs['n_paths']}")
+            st.write(f"- Random Seed: {inputs['seed']}")
+
+    st.markdown("---")
+
     # Run button
     if st.button("Run Simulation", type="primary"):
         try:

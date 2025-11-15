@@ -15,7 +15,7 @@ Key features:
 
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -33,6 +33,20 @@ class DataService:
         self.config = get_config()
         self._cpi_data: Optional[pd.DataFrame] = None
         self._cpi_inflation_rates: Optional[pd.Series] = None
+        self._category_cpi_data: Dict[str, pd.DataFrame] = {}
+        self._category_inflation_rates: Dict[str, pd.Series] = {}
+
+        # Map expense category names to CPI file names
+        self.category_cpi_mapping = {
+            "Food and beverages": "Food_CPI.csv",
+            "Housing": "Housing CPI.csv",
+            "Apparel": "Apparel_CPI.csv",
+            "Transportation": "Transportation_CPI.csv",
+            "Medical care": "Medical_CPI.csv",
+            "Recreation": "Recreation_CPI.csv",
+            "Education and communication": "Education_CPI.csv",
+            "Other goods and services": "Other_CPI.csv",
+        }
 
     @lru_cache(maxsize=64)
     def _download_prices(self, ticker: str, start: str, end: str) -> pd.Series:
@@ -229,6 +243,139 @@ class DataService:
         if year in inflation_rates.index:
             return float(inflation_rates.loc[year])
         return None
+
+    def load_category_cpi_data(self, category_name: str) -> Optional[pd.DataFrame]:
+        """
+        Load category-specific CPI data from CSV file.
+
+        Args:
+            category_name: Name of the expense category
+
+        Returns:
+            DataFrame with Year as index and Annual CPI values, or None if file not found
+        """
+        # Check cache first
+        if category_name in self._category_cpi_data:
+            return self._category_cpi_data[category_name]
+
+        # Get filename from mapping
+        filename = self.category_cpi_mapping.get(category_name)
+        if not filename:
+            return None
+
+        try:
+            # Get the project root directory (parent of app/)
+            project_root = Path(__file__).parent.parent.parent
+            cpi_file = project_root / "data" / "CPI" / filename
+
+            if not cpi_file.exists():
+                # Fallback: try without "CPI" subdirectory
+                cpi_file = project_root / "data" / filename
+                if not cpi_file.exists():
+                    return None
+
+            # Read CSV, skipping empty rows
+            df = pd.read_csv(cpi_file)
+            df = df[df["Year"].notna()]  # Remove rows with missing year
+
+            # Extract Year and Annual columns (handle different column names)
+            if "Annual" in df.columns:
+                cpi_df = df[["Year", "Annual"]].copy()
+                cpi_df = cpi_df[cpi_df["Annual"].notna()]
+                cpi_df["Year"] = cpi_df["Year"].astype(int)
+                cpi_df["Annual"] = cpi_df["Annual"].astype(float)
+            elif len(df.columns) >= 2:
+                # Assume first column is Year, second is CPI value
+                year_col = df.columns[0]
+                cpi_col = df.columns[1]
+                cpi_df = df[[year_col, cpi_col]].copy()
+                cpi_df = cpi_df[cpi_df[cpi_col].notna()]
+                cpi_df[year_col] = cpi_df[year_col].astype(int)
+                cpi_df[cpi_col] = cpi_df[cpi_col].astype(float)
+                cpi_df.columns = ["Year", "Annual"]
+            else:
+                return None
+
+            cpi_df = cpi_df.set_index("Year")
+            cpi_df.columns = ["CPI"]
+
+            # Cache the result
+            self._category_cpi_data[category_name] = cpi_df
+            return cpi_df
+
+        except Exception as e:
+            print(
+                f"Warning: Failed to load category CPI data for {category_name}: {str(e)}"
+            )
+            return None
+
+    def calculate_category_inflation_rates(
+        self, category_name: str
+    ) -> Optional[pd.Series]:
+        """
+        Calculate historical annual inflation rates for a specific category from CPI data.
+
+        Args:
+            category_name: Name of the expense category
+
+        Returns:
+            Series with Year as index and inflation rate as values, or None if data unavailable
+        """
+        # Check cache first
+        if category_name in self._category_inflation_rates:
+            return self._category_inflation_rates[category_name]
+
+        # Load category CPI data
+        cpi_df = self.load_category_cpi_data(category_name)
+        if cpi_df is None or cpi_df.empty:
+            return None
+
+        cpi_values = cpi_df["CPI"].sort_index()
+
+        # Calculate year-over-year inflation: (CPI_t / CPI_t-1) - 1
+        inflation_rates = cpi_values.pct_change().dropna()
+        inflation_rates.name = "InflationRate"
+
+        # Cache the result
+        self._category_inflation_rates[category_name] = inflation_rates
+        return inflation_rates
+
+    def get_category_inflation_rate_for_year(
+        self, category_name: str, year: int
+    ) -> Optional[float]:
+        """
+        Get category-specific inflation rate for a specific year.
+
+        Args:
+            category_name: Name of the expense category
+            year: Year to get inflation rate for
+
+        Returns:
+            Inflation rate for that year, or None if not available
+        """
+        inflation_rates = self.calculate_category_inflation_rates(category_name)
+        if inflation_rates is None:
+            return None
+        if year in inflation_rates.index:
+            return float(inflation_rates.loc[year])
+        return None
+
+    def get_average_category_inflation_rate(
+        self, category_name: str
+    ) -> Optional[float]:
+        """
+        Get historical average annual inflation rate for a specific category.
+
+        Args:
+            category_name: Name of the expense category
+
+        Returns:
+            Average annual inflation rate, or None if data unavailable
+        """
+        inflation_rates = self.calculate_category_inflation_rates(category_name)
+        if inflation_rates is None or len(inflation_rates) == 0:
+            return None
+        return float(inflation_rates.mean())
 
     def load_wage_data(self) -> pd.DataFrame:
         """

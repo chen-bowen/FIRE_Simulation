@@ -154,6 +154,7 @@ class PortfolioService:
         years_into_retirement: float,
         inflation_rate_annual: float,
         freq: str,
+        category_inflation_rates: Optional[Dict[str, float]] = None,
     ) -> Dict[str, float]:
         """
         Calculate spending per category adjusted for inflation.
@@ -161,19 +162,25 @@ class PortfolioService:
         Args:
             initial_category_spending: Initial annual spending per category
             years_into_retirement: Number of years into retirement
-            inflation_rate_annual: Annual inflation rate to apply
+            inflation_rate_annual: Annual inflation rate to apply (fallback if category rates unavailable)
             freq: Frequency ('daily' or 'monthly')
+            category_inflation_rates: Optional dict mapping category names to their specific inflation rates
 
         Returns:
             Dictionary mapping category names to adjusted annual spending amounts
         """
-        # Apply cumulative inflation: (1 + r)^t
-        inflation_multiplier = (1.0 + inflation_rate_annual) ** years_into_retirement
+        adjusted_spending = {}
 
-        adjusted_spending = {
-            category: amount * inflation_multiplier
-            for category, amount in initial_category_spending.items()
-        }
+        for category, amount in initial_category_spending.items():
+            # Use category-specific inflation rate if available, otherwise fall back to general rate
+            if category_inflation_rates and category in category_inflation_rates:
+                category_rate = category_inflation_rates[category]
+            else:
+                category_rate = inflation_rate_annual
+
+            # Apply cumulative inflation: (1 + r)^t
+            inflation_multiplier = (1.0 + category_rate) ** years_into_retirement
+            adjusted_spending[category] = amount * inflation_multiplier
 
         return adjusted_spending
 
@@ -184,6 +191,7 @@ class PortfolioService:
         years_into_retirement: float,
         inflation_rate_annual: float,
         freq: str,
+        category_inflation_rates: Optional[Dict[str, float]] = None,
     ) -> float:
         """
         Calculate total dynamic withdrawal amount for a period.
@@ -192,8 +200,9 @@ class PortfolioService:
             withdrawal_params: Withdrawal parameters
             initial_category_spending: Initial annual spending per category
             years_into_retirement: Number of years into retirement
-            inflation_rate_annual: Annual inflation rate
+            inflation_rate_annual: Annual inflation rate (fallback if category rates unavailable)
             freq: Frequency ('daily' or 'monthly')
+            category_inflation_rates: Optional dict mapping category names to their specific inflation rates
 
         Returns:
             Total annual withdrawal amount
@@ -206,12 +215,13 @@ class PortfolioService:
             total = sum(initial_category_spending.values()) * inflation_multiplier
             return total
 
-        # Calculate adjusted spending per category
+        # Calculate adjusted spending per category (with category-specific rates if available)
         adjusted_category_spending = self.calculate_category_spending(
             initial_category_spending,
             years_into_retirement,
             inflation_rate_annual,
             freq,
+            category_inflation_rates,
         )
 
         # Sum all categories

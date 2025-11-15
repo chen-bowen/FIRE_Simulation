@@ -51,14 +51,36 @@ class ChartComponent:
 
         fig = go.Figure()
 
-        # Add percentile bands
+        # Add shaded confidence band (P10 to P90)
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=result.p90_path,
                 name="P90",
-                line=dict(color="#9ecae1"),
-                fill=None,
+                line=dict(color="rgba(158, 202, 225, 0.0)", width=0),
+                showlegend=False,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=result.p10_path,
+                name="80% Confidence Band",
+                line=dict(color="rgba(158, 202, 225, 0.0)", width=0),
+                fill="tonexty",
+                fillcolor="rgba(158, 202, 225, 0.2)",
+                showlegend=True,
+            )
+        )
+
+        # Add percentile lines with better styling
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=result.p90_path,
+                name="P90 (90th Percentile)",
+                line=dict(color="#3182bd", width=1.5, dash="dash"),
+                showlegend=True,
             )
         )
         fig.add_trace(
@@ -66,53 +88,19 @@ class ChartComponent:
                 x=x,
                 y=result.median_path,
                 name="Median",
-                line=dict(color="#3182bd", width=2),
+                line=dict(color="#08519c", width=3),
+                showlegend=True,
             )
         )
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=result.p10_path,
-                name="P10",
-                line=dict(color="#9ecae1"),
-                fill="tonexty",
-                fillcolor="rgba(158, 202, 225, 0.3)",
+                name="P10 (10th Percentile)",
+                line=dict(color="#3182bd", width=1.5, dash="dash"),
+                showlegend=True,
             )
         )
-
-        # Add sample individual paths (fewer for Monte Carlo, more for Historical)
-        if hasattr(result, "sample_paths") and result.sample_paths is not None:
-            # Show fewer paths for Monte Carlo (smoother, more theoretical)
-            # Show more paths for Historical (real market data with variation)
-            if "Monte Carlo" in title:
-                n_sample_paths = min(10, len(result.sample_paths))  # Fewer MC paths
-            else:
-                n_sample_paths = min(
-                    30, len(result.sample_paths)
-                )  # More historical paths
-
-            for i in range(n_sample_paths):
-                # Different styling for Monte Carlo vs Historical
-                if "Monte Carlo" in title:
-                    # More subtle for Monte Carlo (theoretical, smooth)
-                    line_color = "rgba(128,128,128,0.2)"
-                    line_width = 0.5
-                else:
-                    # More visible for Historical (real market data)
-                    line_color = "rgba(128,128,128,0.4)"
-                    line_width = 1
-
-                fig.add_trace(
-                    go.Scatter(
-                        x=x,
-                        y=result.sample_paths[i],
-                        name=(
-                            f"Sample {i+1}" if i < 3 else None
-                        ),  # Only show legend for first 3
-                        line=dict(color=line_color, width=line_width),
-                        showlegend=i < 3,
-                    )
-                )
 
         fig.update_layout(
             title=title,
