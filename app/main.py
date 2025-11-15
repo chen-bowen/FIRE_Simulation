@@ -289,9 +289,15 @@ def main():
         results.display_metrics(simulation_result, "Simulation Results")
         results.display_data_warning(simulation_result, total_years)
 
-        # Plot paths
-        charts.plot_simulation_paths(
-            simulation_result, "Portfolio Paths", current_age=inputs["current_age"]
+        # Plot interactive portfolio chart
+        from datetime import datetime
+
+        current_year = datetime.now().year
+        charts.plot_interactive_portfolio_chart(
+            simulation_result,
+            title="Portfolio Quantiles",
+            current_age=inputs["current_age"],
+            current_year=current_year,
         )
 
         # Plot interactive portfolio progress chart (replaces terminal wealth histogram)

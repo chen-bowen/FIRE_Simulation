@@ -140,6 +140,8 @@ class SimulationService:
                 )
 
             balances_over_time: List[np.ndarray] = []
+            spending_over_time: List[np.ndarray] = []
+            returns_over_time: List[np.ndarray] = []
             terminal_balances: List[float] = []
             success_count = 0
 
@@ -176,6 +178,8 @@ class SimulationService:
 
                 state = PortfolioState(balance=params.initial_balance, weights=weights)
                 balances = np.zeros(actual_periods)
+                spending = np.zeros(actual_periods)
+                returns = np.zeros(actual_periods)
                 prev_date = None
 
                 # pre-calc adjusted pre-retire periods in case of shortened data
@@ -260,9 +264,13 @@ class SimulationService:
                     )
 
                     balances[i] = state.balance
+                    spending[i] = spend
+                    returns[i] = portfolio_return
                     prev_date = date_i
 
                 balances_over_time.append(balances)
+                spending_over_time.append(spending)
+                returns_over_time.append(returns)
                 terminal_balances.append(state.balance)
                 success_count += 1 if state.balance > 0 else 0
 
@@ -272,9 +280,13 @@ class SimulationService:
                 )
 
             balances_over_time_arr = np.vstack(balances_over_time)
+            spending_over_time_arr = np.vstack(spending_over_time)
+            returns_over_time_arr = np.vstack(returns_over_time)
             median_path = np.median(balances_over_time_arr, axis=0)
             p10_path = np.percentile(balances_over_time_arr, 10, axis=0)
             p90_path = np.percentile(balances_over_time_arr, 90, axis=0)
+            median_spending = np.median(spending_over_time_arr, axis=0)
+            median_returns = np.median(returns_over_time_arr, axis=0)
 
             success_rate = success_count / float(len(balances_over_time))
 
@@ -297,6 +309,8 @@ class SimulationService:
                 data_limited=(available_periods < total_periods),
                 available_years=available_periods / ppy,
                 sample_paths=sample_paths,
+                spending_over_time=median_spending,
+                returns_over_time=median_returns,
             )
 
         except Exception as e:
@@ -365,6 +379,8 @@ class SimulationService:
             n_assets = means.shape[0]
             terminal_balances = np.zeros(n_paths)
             all_paths = np.zeros((n_paths, total_periods))
+            all_spending = np.zeros((n_paths, total_periods))
+            all_returns = np.zeros((n_paths, total_periods))
 
             for p in range(n_paths):
                 state = PortfolioState(balance=params.initial_balance, weights=weights)
@@ -447,12 +463,16 @@ class SimulationService:
                     )
 
                     all_paths[p, i] = state.balance
+                    all_spending[p, i] = spend
+                    all_returns[p, i] = portfolio_return
 
                 terminal_balances[p] = state.balance
 
             median_path = np.median(all_paths, axis=0)
             p10_path = np.percentile(all_paths, 10, axis=0)
             p90_path = np.percentile(all_paths, 90, axis=0)
+            median_spending = np.median(all_spending, axis=0)
+            median_returns = np.median(all_returns, axis=0)
             success_rate = float(np.mean(terminal_balances > 0))
 
             # sample up to 100 paths
@@ -470,6 +490,8 @@ class SimulationService:
                 periods_per_year=ppy,
                 horizon_periods=total_periods,
                 sample_paths=sample_paths,
+                spending_over_time=median_spending,
+                returns_over_time=median_returns,
             )
 
         except Exception as e:
@@ -530,12 +552,16 @@ class SimulationService:
             )
 
             balances_over_time: List[np.ndarray] = []
+            spending_over_time: List[np.ndarray] = []
+            returns_over_time: List[np.ndarray] = []
             terminal_balances: List[float] = []
             success_count = 0
 
             for path_idx in range(n_paths):
                 state = PortfolioState(balance=params.initial_balance, weights=weights)
                 balances = np.zeros(total_periods)
+                spending = np.zeros(total_periods)
+                returns = np.zeros(total_periods)
 
                 # Determine how many historical accumulation periods are available for this path
                 hist_accum_periods = min(pre_retire_periods, available_periods)
@@ -590,15 +616,23 @@ class SimulationService:
                     )
 
                     balances[i] = state.balance
+                    spending[i] = spend
+                    returns[i] = portfolio_return
 
                 balances_over_time.append(balances)
+                spending_over_time.append(spending)
+                returns_over_time.append(returns)
                 terminal_balances.append(state.balance)
                 success_count += 1 if state.balance > 0 else 0
 
             balances_over_time_arr = np.vstack(balances_over_time)
+            spending_over_time_arr = np.vstack(spending_over_time)
+            returns_over_time_arr = np.vstack(returns_over_time)
             median_path = np.median(balances_over_time_arr, axis=0)
             p10_path = np.percentile(balances_over_time_arr, 10, axis=0)
             p90_path = np.percentile(balances_over_time_arr, 90, axis=0)
+            median_spending = np.median(spending_over_time_arr, axis=0)
+            median_returns = np.median(returns_over_time_arr, axis=0)
             success_rate = success_count / float(len(balances_over_time))
 
             print(f"Simulation: Generated {len(balances_over_time)} paths (hybrid)")
@@ -623,6 +657,8 @@ class SimulationService:
                 data_limited=(available_periods < pre_retire_periods),
                 available_years=available_periods / ppy,
                 sample_paths=sample_paths,
+                spending_over_time=median_spending,
+                returns_over_time=median_returns,
             )
 
         except Exception as e:

@@ -107,6 +107,12 @@ class SimulationResult:
     sample_paths: Optional[np.ndarray] = (
         None  # Sample individual paths for visualization
     )
+    spending_over_time: Optional[np.ndarray] = (
+        None  # Median spending per period (for visualization)
+    )
+    returns_over_time: Optional[np.ndarray] = (
+        None  # Median returns per period (for visualization)
+    )
 
 
 @dataclass

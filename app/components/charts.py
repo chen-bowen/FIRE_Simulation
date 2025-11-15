@@ -126,6 +126,384 @@ class ChartComponent:
 
         st.plotly_chart(fig, use_container_width=True)
 
+    def plot_interactive_portfolio_chart(
+        self,
+        result: SimulationResult,
+        title: str = "Portfolio Quantiles",
+        current_age: int = None,
+        current_year: int = None,
+    ) -> None:
+        """Plot interactive portfolio chart with controls for metric type and chart type.
+
+        Args:
+            result: Simulation result data
+            title: Chart title
+            current_age: Current age for age-based x-axis labels (optional)
+            current_year: Current year for calendar year x-axis labels (optional)
+        """
+        from datetime import datetime
+
+        if current_year is None:
+            current_year = datetime.now().year
+
+        # Interactive controls
+        col1, col2 = st.columns(2)
+
+        with col1:
+            metric_type = st.radio(
+                "Metric Type",
+                ["Portfolio", "Spending"],
+                key="portfolio_metric_type",
+            )
+
+        with col2:
+            chart_type = st.radio(
+                "Chart Type",
+                ["Min/Max/Mean", "Spending vs Returns"],
+                key="portfolio_chart_type",
+            )
+
+        # Render appropriate chart based on selections
+        if chart_type == "Min/Max/Mean":
+            if metric_type == "Portfolio":
+                self._plot_portfolio_quantiles(result, title, current_age, current_year)
+            else:  # Spending
+                self._plot_spending_quantiles(
+                    result, "Spending Quantiles", current_age, current_year
+                )
+        else:  # Spending vs Returns
+            self._plot_spending_vs_returns(result, current_year)
+
+        # Add note about today's dollars (styled like examples)
+        st.markdown(
+            '<div style="background-color: #e8d5ff; padding: 10px; border-radius: 5px; margin-top: 10px;">'
+            '<strong>Note:</strong> All values on this page are in "Today\'s Dollars"'
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    def _plot_portfolio_quantiles(
+        self,
+        result: SimulationResult,
+        title: str,
+        current_age: int = None,
+        current_year: int = None,
+    ) -> None:
+        """Plot portfolio quantiles with shaded bands (Min/Max/Mean view).
+
+        Args:
+            result: Simulation result data
+            title: Chart title
+            current_age: Current age for age-based x-axis labels (optional)
+            current_year: Current year for calendar year x-axis labels (optional)
+        """
+        from datetime import datetime
+
+        if current_year is None:
+            current_year = datetime.now().year
+
+        time_periods = np.arange(result.horizon_periods) / result.periods_per_year
+
+        # Determine x-axis: prefer calendar years if available, otherwise age or years
+        if current_year is not None:
+            x = current_year + time_periods
+            xaxis_title = "Year"
+        elif current_age is not None:
+            x = current_age + time_periods
+            xaxis_title = "Age"
+        else:
+            x = time_periods
+            xaxis_title = "Years"
+
+        fig = go.Figure()
+
+        # Calculate additional percentiles for richer visualization
+        if (
+            result.sample_paths is not None
+            and len(result.sample_paths) > 0
+            and result.sample_paths.shape[1] == len(result.median_path)
+        ):
+            # Use sample paths to calculate more percentiles
+            p25 = np.percentile(result.sample_paths, 25, axis=0)
+            p75 = np.percentile(result.sample_paths, 75, axis=0)
+            p5 = np.percentile(result.sample_paths, 5, axis=0)
+            p95 = np.percentile(result.sample_paths, 95, axis=0)
+        else:
+            # Fallback to interpolated percentiles based on P10, median, P90
+            p25 = result.p10_path + (result.median_path - result.p10_path) * 0.75
+            p75 = result.median_path + (result.p90_path - result.median_path) * 0.75
+            p5 = result.p10_path - (result.median_path - result.p10_path) * 0.5
+            p95 = result.p90_path + (result.p90_path - result.median_path)
+
+        # Add shaded quantile bands with green color scheme
+        # Outer band: P5 to P95
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=p95,
+                name="P95",
+                line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
+                showlegend=False,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=p5,
+                name="90% Range",
+                line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
+                fill="tonexty",
+                fillcolor="rgba(26, 188, 156, 0.15)",
+                showlegend=True,
+            )
+        )
+
+        # Middle band: P10 to P90
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=result.p90_path,
+                name="P90",
+                line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
+                showlegend=False,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=result.p10_path,
+                name="80% Range",
+                line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
+                fill="tonexty",
+                fillcolor="rgba(26, 188, 156, 0.25)",
+                showlegend=True,
+            )
+        )
+
+        # Inner band: P25 to P75
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=p75,
+                name="P75",
+                line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
+                showlegend=False,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=p25,
+                name="50% Range",
+                line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
+                fill="tonexty",
+                fillcolor="rgba(26, 188, 156, 0.35)",
+                showlegend=True,
+            )
+        )
+
+        # Add median line
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=result.median_path,
+                name="Median",
+                line=dict(color="#1abc9c", width=2.5),
+                showlegend=True,
+            )
+        )
+
+        fig.update_layout(
+            title=title,
+            xaxis_title=xaxis_title,
+            yaxis_title="Portfolio Value ($)",
+            hovermode="x unified",
+            showlegend=True,
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
+        )
+
+        # Format x-axis
+        if current_year is not None:
+            max_year = current_year + (result.horizon_periods / result.periods_per_year)
+            year_range = max_year - current_year
+            if year_range > 30:
+                dtick = 10
+            elif year_range > 15:
+                dtick = 5
+            else:
+                dtick = 2
+            fig.update_xaxes(tickmode="linear", dtick=dtick)
+        elif current_age is not None:
+            max_age = current_age + (result.horizon_periods / result.periods_per_year)
+            age_range = max_age - current_age
+            if age_range > 30:
+                dtick = 10
+            elif age_range > 15:
+                dtick = 5
+            else:
+                dtick = 2
+            fig.update_xaxes(tickmode="linear", dtick=dtick)
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    def _plot_spending_quantiles(
+        self,
+        result: SimulationResult,
+        title: str,
+        current_age: int = None,
+        current_year: int = None,
+    ) -> None:
+        """Plot spending quantiles (placeholder - requires spending data).
+
+        Args:
+            result: Simulation result data
+            title: Chart title
+            current_age: Current age for age-based x-axis labels (optional)
+            current_year: Current year for calendar year x-axis labels (optional)
+        """
+        if result.spending_over_time is None:
+            st.warning("Spending data not available for this visualization.")
+            return
+
+        from datetime import datetime
+
+        if current_year is None:
+            current_year = datetime.now().year
+
+        time_periods = np.arange(result.horizon_periods) / result.periods_per_year
+
+        if current_year is not None:
+            x = current_year + time_periods
+            xaxis_title = "Year"
+        elif current_age is not None:
+            x = current_age + time_periods
+            xaxis_title = "Age"
+        else:
+            x = time_periods
+            xaxis_title = "Years"
+
+        fig = go.Figure()
+
+        # Convert period spending to annual spending
+        ppy = result.periods_per_year
+        annual_spending = result.spending_over_time * ppy
+
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=annual_spending,
+                name="Median Spending",
+                line=dict(color="#1abc9c", width=2.5),
+                showlegend=True,
+            )
+        )
+
+        fig.update_layout(
+            title=title,
+            xaxis_title=xaxis_title,
+            yaxis_title="Annual Spending ($)",
+            hovermode="x unified",
+            showlegend=True,
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    def _plot_spending_vs_returns(
+        self, result: SimulationResult, current_year: int = None
+    ) -> None:
+        """Plot spending vs returns bar chart.
+
+        Args:
+            result: Simulation result data
+            current_year: Current year for calendar year x-axis labels
+        """
+        from datetime import datetime
+
+        if current_year is None:
+            current_year = datetime.now().year
+
+        if result.spending_over_time is None or result.returns_over_time is None:
+            st.warning(
+                "Spending and returns data not available for this visualization."
+            )
+            return
+
+        ppy = result.periods_per_year
+        total_years = int(result.horizon_periods / ppy)
+
+        # Aggregate periods into years
+        years = []
+        annual_spending = []
+        annual_returns = []
+
+        for year_idx in range(total_years):
+            start_period = year_idx * ppy
+            end_period = min((year_idx + 1) * ppy, result.horizon_periods)
+
+            # Sum spending for the year (spending_over_time is per-period)
+            year_spending = np.sum(result.spending_over_time[start_period:end_period])
+
+            # Calculate portfolio return for the year
+            # Returns are per-period, so we need to compound them
+            year_returns = result.returns_over_time[start_period:end_period]
+            if len(year_returns) > 0 and start_period < len(result.median_path):
+                # Use portfolio value at start of year
+                portfolio_value_start = result.median_path[start_period]
+                # Compound returns: (1 + r1) * (1 + r2) * ... - 1
+                compounded_return = np.prod(1 + year_returns) - 1
+                # Convert to dollar amount
+                year_return_dollars = portfolio_value_start * compounded_return
+            else:
+                year_return_dollars = 0.0
+
+            years.append(current_year + year_idx)
+            annual_spending.append(-year_spending)  # Negative for spending
+            annual_returns.append(year_return_dollars)  # Positive for returns
+
+        fig = go.Figure()
+
+        # Add spending bars (negative, pink)
+        fig.add_trace(
+            go.Bar(
+                x=years,
+                y=annual_spending,
+                name="Spending",
+                marker_color="#e74c3c",  # Pink/red for negative
+                hovertemplate="%{x}<br>Spending: $%{y:,.0f}<extra></extra>",
+            )
+        )
+
+        # Add returns bars (positive, teal)
+        fig.add_trace(
+            go.Bar(
+                x=years,
+                y=annual_returns,
+                name="Returns",
+                marker_color="#1abc9c",  # Teal for positive
+                hovertemplate="%{x}<br>Returns: $%{y:,.0f}<extra></extra>",
+            )
+        )
+
+        # Calculate y-axis range
+        all_values = annual_spending + annual_returns
+        y_min = min(all_values) * 1.1
+        y_max = max(all_values) * 1.1
+
+        fig.update_layout(
+            title="Average Spending vs Returns",
+            xaxis_title="Year",
+            yaxis_title="Amount ($)",
+            barmode="group",
+            hovermode="x unified",
+            showlegend=True,
+            yaxis=dict(range=[y_min, y_max]),
+            xaxis=dict(tickmode="linear", dtick=2),
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
     def plot_terminal_wealth_histogram(
         self,
         result: SimulationResult,
