@@ -112,7 +112,10 @@ class SimulationService:
             # Convert returns to numpy
             asset_returns = returns_df.to_numpy()
             n_periods_available = asset_returns.shape[0]
-            n_assets = asset_returns.shape[1] if asset_returns.ndim == 2 else 1
+            # Handle single asset case - ensure 2D array
+            if asset_returns.ndim == 1:
+                asset_returns = asset_returns.reshape(-1, 1)
+            n_assets = asset_returns.shape[1]
 
             # Use available data length, adjusting simulation parameters if needed
             available_periods = n_periods_available
@@ -244,9 +247,15 @@ class SimulationService:
 
                     # determine portfolio return for this period (portfolio-level)
                     period_asset_returns = window_returns[i]
+                    # Handle both single and multiple assets
                     if n_assets == 1:
-                        portfolio_return = float(period_asset_returns) * np.dot(
-                            weights, np.ones_like(weights)
+                        portfolio_return = (
+                            float(
+                                period_asset_returns[0]
+                                if isinstance(period_asset_returns, np.ndarray)
+                                else period_asset_returns
+                            )
+                            * weights[0]
                         )
                     else:
                         portfolio_return = float(np.dot(period_asset_returns, weights))
@@ -519,7 +528,11 @@ class SimulationService:
 
             # Basic stats from historical data
             asset_returns = returns_df.to_numpy()
+            # Handle single asset case - ensure 2D array
+            if asset_returns.ndim == 1:
+                asset_returns = asset_returns.reshape(-1, 1)
             available_periods = asset_returns.shape[0]
+            n_assets = asset_returns.shape[1]
 
             # If enough historical data to generate rolling starts, use run_historical_simulation
             if available_periods >= total_periods:
@@ -531,9 +544,12 @@ class SimulationService:
             # Prepare Monte Carlo parameters from historical log-returns
             log_returns = np.log1p(asset_returns)
             log_means = np.mean(log_returns, axis=0)
-            cov = np.cov(log_returns.T)
+            # Handle single asset case for covariance
+            if n_assets == 1:
+                cov = np.array([[np.var(log_returns.flatten())]])
+            else:
+                cov = np.cov(log_returns.T)
             L = self._safe_cholesky(cov)
-            n_assets = log_means.shape[0]
 
             contrib_pp, spend_pp_nominal_year1 = (
                 self.portfolio_service.calculate_period_amounts(
@@ -602,7 +618,17 @@ class SimulationService:
                             spend_pp *= 1.0 + inflation_pp
                         spend = spend_pp
 
-                    portfolio_return = float(np.dot(full_asset_returns[i], weights))
+                    # Handle single asset case
+                    if n_assets == 1:
+                        # full_asset_returns[i] is shape (1,) when 2D, or scalar when 1D
+                        period_return_val = (
+                            full_asset_returns[i, 0]
+                            if full_asset_returns.ndim == 2
+                            else full_asset_returns[i]
+                        )
+                        portfolio_return = float(period_return_val) * float(weights[0])
+                    else:
+                        portfolio_return = float(np.dot(full_asset_returns[i], weights))
 
                     state = self.portfolio_service.step_portfolio(
                         state=state,
