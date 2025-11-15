@@ -108,28 +108,25 @@ def main():
         )
 
     with col4:
-        portfolio_summary = (
-            ", ".join(
-                [
-                    f"{w:.0f}% {asset}"
-                    for asset, w in st.session_state.get(
-                        "portfolio_weights", {}
-                    ).items()
-                    if w > 0
-                ]
-            )
-            if "portfolio_weights" in st.session_state
-            else "Not set"
-        )
-        st.metric(
-            "Portfolio",
-            (
-                portfolio_summary[:30] + "..."
-                if len(portfolio_summary) > 30
-                else portfolio_summary
-            ),
-            help="Portfolio allocation",
-        )
+        st.markdown("**Portfolio Allocation**")
+        if (
+            "portfolio_weights" in st.session_state
+            and st.session_state.portfolio_weights
+        ):
+            portfolio_weights = {
+                k: v for k, v in st.session_state.portfolio_weights.items() if v > 0
+            }
+            if portfolio_weights:
+                fig = sidebar._create_portfolio_pie_chart(portfolio_weights)
+                # Make the chart smaller for the summary section
+                fig.update_layout(height=250, margin=dict(l=10, r=10, t=30, b=10))
+                st.plotly_chart(
+                    fig, use_container_width=True, key="summary_portfolio_chart"
+                )
+            else:
+                st.info("No portfolio allocation set")
+        else:
+            st.info("No portfolio allocation set")
 
     # Show input summary in expander
     with st.expander("📋 View Input Summary", expanded=False):
