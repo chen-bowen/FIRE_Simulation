@@ -420,6 +420,8 @@ class SidebarComponent:
             # Show pie chart
             st.sidebar.markdown("**Portfolio Allocation:**")
             fig = self._create_portfolio_pie_chart(slider_values)
+            # Remove chart title
+            fig.update_layout(title="")
             st.sidebar.plotly_chart(
                 fig, use_container_width=True, key="portfolio_pie_chart"
             )
