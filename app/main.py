@@ -182,6 +182,49 @@ def main():
 
     st.markdown("---")
 
+    # Create a hash of current inputs to detect changes
+    import hashlib
+    import json
+
+    # Convert inputs to a hashable format (excluding withdrawal_params which may not be JSON serializable)
+    inputs_for_hash = {k: v for k, v in inputs.items() if k != "withdrawal_params"}
+    if "withdrawal_params" in inputs and inputs["withdrawal_params"] is not None:
+        # Include withdrawal params summary
+        wp = inputs["withdrawal_params"]
+        inputs_for_hash["withdrawal_total"] = wp.total_annual_expense
+        inputs_for_hash["withdrawal_cpi"] = wp.use_cpi_adjustment
+    inputs_hash = hashlib.md5(
+        json.dumps(inputs_for_hash, sort_keys=True, default=str).encode()
+    ).hexdigest()
+
+    # Check if inputs have changed - if so, clear cached simulation
+    if "last_inputs_hash" in st.session_state:
+        if st.session_state["last_inputs_hash"] != inputs_hash:
+            # Inputs changed, clear simulation cache
+            if "simulation_result" in st.session_state:
+                del st.session_state["simulation_result"]
+            if "simulation_pre_retire_years" in st.session_state:
+                del st.session_state["simulation_pre_retire_years"]
+            if "simulation_current_age" in st.session_state:
+                del st.session_state["simulation_current_age"]
+            if "simulation_returns_df" in st.session_state:
+                del st.session_state["simulation_returns_df"]
+            if "simulation_initial_balance" in st.session_state:
+                del st.session_state["simulation_initial_balance"]
+            # Reset slider to year 1
+            if "portfolio_year_slider" in st.session_state:
+                st.session_state["portfolio_year_slider"] = 1
+
+    # Store current inputs hash
+    st.session_state["last_inputs_hash"] = inputs_hash
+
+    # Check if we have a cached simulation result
+    simulation_result = None
+    returns_df_cached = None
+    if "simulation_result" in st.session_state:
+        simulation_result = st.session_state["simulation_result"]
+        returns_df_cached = st.session_state.get("simulation_returns_df")
+
     # Run button
     if st.button("Run Simulation", type="primary"):
         try:
@@ -227,24 +270,64 @@ def main():
                     inputs["seed"],
                 )
 
-            # Display results
-            results.display_metrics(simulation_result, "Simulation Results")
-            results.display_data_warning(simulation_result, total_years)
-
-            # Plot paths
-            charts.plot_simulation_paths(
-                simulation_result, "Portfolio Paths", current_age=inputs["current_age"]
-            )
-
-            # Plot terminal wealth histogram
-            charts.plot_terminal_wealth_histogram(simulation_result)
-
-            # Display statistics
-            results.display_statistics(simulation_result)
+            # Store simulation result and related data in session state for persistence across slider interactions
+            st.session_state["simulation_result"] = simulation_result
+            st.session_state["simulation_pre_retire_years"] = pre_retire_years
+            st.session_state["simulation_current_age"] = inputs["current_age"]
+            st.session_state["simulation_returns_df"] = returns_df
+            st.session_state["simulation_initial_balance"] = inputs["initial_balance"]
+            returns_df_cached = returns_df
 
         except Exception as e:
             st.error(f"Simulation failed: {str(e)}")
             st.exception(e)
+            simulation_result = None
+
+    # Display results if we have a simulation result
+    if simulation_result is not None:
+        # Display results
+        results.display_metrics(simulation_result, "Simulation Results")
+        results.display_data_warning(simulation_result, total_years)
+
+        # Plot paths
+        charts.plot_simulation_paths(
+            simulation_result, "Portfolio Paths", current_age=inputs["current_age"]
+        )
+
+        # Plot interactive portfolio progress chart (replaces terminal wealth histogram)
+        portfolio_weights_dict = None
+        if "portfolio_weights" in st.session_state:
+            portfolio_weights_dict = {
+                k: v for k, v in st.session_state["portfolio_weights"].items() if v > 0
+            }
+
+        # Use stored values if available, otherwise use current inputs
+        stored_pre_retire_years = st.session_state.get(
+            "simulation_pre_retire_years", pre_retire_years
+        )
+        stored_current_age = st.session_state.get(
+            "simulation_current_age", inputs["current_age"]
+        )
+
+        # Get asset class mapping from sidebar component
+        asset_class_mapping = None
+        if hasattr(sidebar, "ASSET_CLASSES"):
+            asset_class_mapping = sidebar.ASSET_CLASSES
+
+        charts.plot_terminal_wealth_histogram(
+            simulation_result,
+            pre_retire_years=stored_pre_retire_years,
+            current_age=stored_current_age,
+            portfolio_weights=portfolio_weights_dict,
+            returns_df=returns_df_cached,
+            initial_balance=st.session_state.get(
+                "simulation_initial_balance", inputs["initial_balance"]
+            ),
+            asset_class_mapping=asset_class_mapping,
+        )
+
+        # Display statistics
+        results.display_statistics(simulation_result)
 
 
 if __name__ == "__main__":

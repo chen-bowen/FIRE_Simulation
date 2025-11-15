@@ -2,18 +2,19 @@
 
 This module handles all charting and visualization for the retirement planner:
 - Portfolio path charts with percentile bands
-- Terminal wealth histograms with fine-grained bins
+- Interactive portfolio progress charts showing accumulation and retirement phases
 - Comparison charts between different simulation methods
 - Interactive Plotly charts with hover information
 
 Key features:
 - Adaptive styling for different simulation types
-- Non-overlapping percentile labels
+- Phase transition markers (accumulation to retirement)
 - Sample path visualization with appropriate density
 - Professional financial chart styling
 """
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objs as go
 import streamlit as st
 
@@ -25,7 +26,7 @@ class ChartComponent:
 
     This class provides all visualization functionality:
     - Portfolio path charts with percentile bands and sample paths
-    - Terminal wealth distribution histograms
+    - Interactive portfolio progress charts showing accumulation and retirement phases
     - Comparison charts between simulation methods
     - Adaptive styling based on simulation type (Historical vs Monte Carlo)
     """
@@ -125,80 +126,285 @@ class ChartComponent:
 
         st.plotly_chart(fig, use_container_width=True)
 
-    def plot_terminal_wealth_histogram(self, result: SimulationResult) -> None:
-        """Plot histogram of terminal wealth with fine-grained bins and non-overlapping labels."""
-        # Use more bins for finer granularity
-        n_bins = min(60, max(40, int(len(result.terminal_balances) ** 0.6)))
+    def plot_terminal_wealth_histogram(
+        self,
+        result: SimulationResult,
+        pre_retire_years: int = None,
+        current_age: int = None,
+        portfolio_weights: dict = None,
+        user_name: str = None,
+        returns_df: pd.DataFrame = None,
+        initial_balance: float = None,
+        asset_class_mapping: dict = None,
+    ) -> None:
+        """Plot interactive year-by-year portfolio allocation explorer.
 
-        fig = go.Figure(
-            data=[
-                go.Histogram(
-                    x=result.terminal_balances,
-                    nbinsx=n_bins,
-                    name="Terminal Wealth",
-                    opacity=0.7,
-                    marker_color="steelblue",
-                    marker_line=dict(color="navy", width=0.5),
+        This replaces the terminal wealth histogram with an interactive slider-based visualization
+        that shows portfolio value, allocation breakdown, and phase for each year.
+
+        Args:
+            result: Simulation result data
+            pre_retire_years: Number of years in accumulation phase
+            current_age: Current age for age-based labels (optional)
+            portfolio_weights: Dictionary mapping asset class names to percentages
+            user_name: User name for display (optional)
+        """
+        # Get portfolio weights from session state if not provided
+        if portfolio_weights is None:
+            if "portfolio_weights" in st.session_state:
+                portfolio_weights = {
+                    k: v
+                    for k, v in st.session_state["portfolio_weights"].items()
+                    if v > 0
+                }
+            else:
+                st.warning(
+                    "Portfolio weights not available. Cannot display allocation breakdown."
                 )
-            ]
+                return
+
+        if not portfolio_weights:
+            st.warning("No portfolio allocation configured.")
+            return
+
+        # Calculate total years
+        total_years = result.horizon_periods / result.periods_per_year
+
+        # Get year indices (convert years to period indices)
+        # Each year corresponds to periods_per_year periods
+        ppy = result.periods_per_year
+
+        # Create slider for year selection
+        max_year = int(total_years)
+        from datetime import datetime
+
+        year_label = "Select Simulation Year"
+        if current_age is not None:
+            current_year = datetime.now().year
+            year_label += f" ({current_year})"
+            if user_name:
+                year_label += f" - {user_name}"
+            age_label = f" (Age: {current_age})"
+        else:
+            age_label = ""
+
+        # Use a stable key to maintain slider state across reruns
+        slider_key = "portfolio_year_slider"
+
+        selected_year = st.slider(
+            year_label + age_label,
+            min_value=1,
+            max_value=max_year,
+            value=st.session_state.get(slider_key, 1),
+            step=1,
+            key=slider_key,
         )
 
-        # Calculate percentiles and their positions
-        percentiles = [10, 25, 50, 75, 90]
-        colors = ["red", "orange", "green", "orange", "red"]
-        labels = ["P10", "P25", "P50", "P75", "P90"]
+        # Calculate period index for selected year
+        # Year 1 = periods 0 to ppy-1, Year 2 = periods ppy to 2*ppy-1, etc.
+        period_idx = min((selected_year - 1) * ppy, len(result.median_path) - 1)
 
-        # Get percentile values
-        percentile_values = [
-            np.percentile(result.terminal_balances, p) for p in percentiles
-        ]
+        # Get portfolio values for selected year
+        portfolio_value_p90 = result.p90_path[period_idx]
+        portfolio_value_p10 = result.p10_path[period_idx]
+        portfolio_value_median = result.median_path[period_idx]
 
-        # Calculate y positions to avoid overlap
-        y_positions = [0.9, 0.8, 0.7, 0.6, 0.5]  # Staggered y positions
+        # Use median as primary value
+        portfolio_value = portfolio_value_median
 
-        for i, (p, color, label, value, y_pos) in enumerate(
-            zip(percentiles, colors, labels, percentile_values, y_positions)
+        # Determine phase
+        if pre_retire_years is not None:
+            is_accumulation = selected_year <= pre_retire_years
+            phase = "Accumulation Phase" if is_accumulation else "Retirement Phase"
+            phase_color = "green" if is_accumulation else "red"
+        else:
+            phase = "Unknown"
+            phase_color = "gray"
+
+        # Calculate dollar amounts per asset class based on actual performance (no rebalancing)
+        asset_classes = list(portfolio_weights.keys())
+        weights_array = np.array([portfolio_weights[ac] for ac in asset_classes])
+        # Normalize weights to sum to 100%
+        weights_array = weights_array / weights_array.sum() * 100.0
+
+        dollar_amounts = {}
+        actual_percentages = {}
+
+        if (
+            returns_df is not None
+            and initial_balance is not None
+            and asset_class_mapping is not None
         ):
-            fig.add_vline(
-                x=value,
-                line_dash="solid",
-                line_color=color,
-                line_width=2,
-                annotation_text=f"{label}: ${value:,.0f}",
-                annotation_position="top",
-                annotation_font_size=9,
-                annotation_y=y_pos,
-                annotation_xshift=10 if i % 2 == 0 else -10,  # Alternate left/right
+            # Calculate actual asset balances based on individual asset returns (no rebalancing)
+            # Get initial dollar amounts per asset class
+            initial_amounts = {}
+            for ac, weight_pct in zip(asset_classes, weights_array):
+                initial_amounts[ac] = initial_balance * (weight_pct / 100.0)
+
+            # Calculate cumulative returns for each asset up to selected period
+            asset_cumulative_returns = {}
+            for ac in asset_classes:
+                if ac in asset_class_mapping:
+                    # Get tickers for this asset class
+                    tickers = asset_class_mapping[ac]
+                    # Find matching tickers in returns_df
+                    matching_tickers = [t for t in tickers if t in returns_df.columns]
+                    if matching_tickers:
+                        # Use first matching ticker
+                        ticker = matching_tickers[0]
+                        if ticker in returns_df.columns and period_idx < len(
+                            returns_df
+                        ):
+                            # Calculate cumulative return up to period_idx
+                            # Need to handle case where period_idx might exceed available data
+                            max_idx = min(period_idx + 1, len(returns_df))
+                            asset_returns = returns_df[ticker].iloc[:max_idx].values
+                            if len(asset_returns) > 0:
+                                # Calculate cumulative return: product of (1 + returns) - 1
+                                cumulative_return = np.prod(1 + asset_returns) - 1
+                                asset_cumulative_returns[ac] = cumulative_return
+                            else:
+                                asset_cumulative_returns[ac] = 0.0
+                        else:
+                            asset_cumulative_returns[ac] = 0.0
+                    else:
+                        asset_cumulative_returns[ac] = 0.0
+                else:
+                    asset_cumulative_returns[ac] = 0.0
+
+            # Calculate actual dollar amounts (initial * (1 + cumulative return))
+            # Note: This is simplified - doesn't account for contributions/withdrawals per asset
+            # But gives a reasonable approximation of drift without rebalancing
+            total_actual_value = 0.0
+            for ac in asset_classes:
+                initial_amt = initial_amounts.get(ac, 0.0)
+                cum_return = asset_cumulative_returns.get(ac, 0.0)
+                dollar_amounts[ac] = initial_amt * (1 + cum_return)
+                total_actual_value += dollar_amounts[ac]
+
+            # Scale to match portfolio value (to account for contributions/withdrawals)
+            if total_actual_value > 0 and portfolio_value > 0:
+                scale_factor = portfolio_value / total_actual_value
+                for ac in asset_classes:
+                    dollar_amounts[ac] *= scale_factor
+
+            # Calculate actual percentages
+            if portfolio_value > 0:
+                for ac in asset_classes:
+                    actual_percentages[ac] = (
+                        dollar_amounts[ac] / portfolio_value
+                    ) * 100.0
+            else:
+                # Fallback to original weights if calculation fails
+                for ac, weight_pct in zip(asset_classes, weights_array):
+                    actual_percentages[ac] = weight_pct
+                    dollar_amounts[ac] = portfolio_value * (weight_pct / 100.0)
+        else:
+            # Fallback: use fixed allocation if returns data not available
+            for ac, weight_pct in zip(asset_classes, weights_array):
+                dollar_amounts[ac] = portfolio_value * (weight_pct / 100.0)
+                actual_percentages[ac] = weight_pct
+
+        # Display title with year info
+        if current_age is not None:
+            current_year = datetime.now().year
+            display_year = current_year + selected_year - 1
+            display_age = current_age + selected_year - 1
+            st.subheader(f"Allocation for Year {display_year} (Age {display_age})")
+        else:
+            st.subheader(f"Allocation for Year {selected_year}")
+
+        # Create two columns: pie chart and info
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            # Create pie chart with dollar amounts
+            labels = list(dollar_amounts.keys())
+            values = list(dollar_amounts.values())
+            # Use actual percentages if calculated, otherwise use original weights
+            if actual_percentages:
+                percentages = [f"{actual_percentages[ac]:.1f}%" for ac in labels]
+            else:
+                percentages = [f"{w:.1f}%" for w in weights_array]
+
+            # Use color scheme from sidebar if available
+            color_map = {
+                "US Stocks": "#2ecc71",
+                "International Stocks": "#3498db",
+                "Bonds": "#9b59b6",
+                "Cash": "#e74c3c",
+                "Crypto": "#f39c12",
+                "Real Estate": "#1abc9c",
+                "Commodities": "#e67e22",
+            }
+            colors = [color_map.get(label, "#95a5a6") for label in labels]
+
+            # Create hover text with both dollar amount and percentage
+            hover_text = [
+                f"{label}<br>${amt:,.0f}<br>{pct}"
+                for label, amt, pct in zip(labels, values, percentages)
+            ]
+
+            fig = go.Figure(
+                data=[
+                    go.Pie(
+                        labels=labels,
+                        values=values,
+                        hole=0.4,  # Donut chart
+                        textinfo="label+percent",
+                        textposition="outside",
+                        hovertemplate="%{hovertext}<extra></extra>",
+                        hovertext=hover_text,
+                        marker=dict(colors=colors, line=dict(color="#ffffff", width=2)),
+                    )
+                ]
             )
 
-        # Add summary statistics as text box
-        mean_val = np.mean(result.terminal_balances)
-        std_val = np.std(result.terminal_balances)
-        median_val = np.median(result.terminal_balances)
+            # Add total value in center
+            fig.add_annotation(
+                text=f"<b>${portfolio_value:,.0f}</b><br>Total Value<br>(Year {selected_year})",
+                x=0.5,
+                y=0.5,
+                font_size=16,
+                showarrow=False,
+            )
 
-        fig.add_annotation(
-            x=0.02,
-            y=0.98,
-            xref="paper",
-            yref="paper",
-            text=f"Mean: ${mean_val:,.0f}<br>Median: ${median_val:,.0f}<br>Std: ${std_val:,.0f}",
-            showarrow=False,
-            bgcolor="rgba(255,255,255,0.9)",
-            bordercolor="black",
-            borderwidth=1,
-            font_size=9,
-        )
+            fig.update_layout(
+                title="",
+                showlegend=True,
+                height=400,
+                margin=dict(l=20, r=20, t=20, b=20),
+            )
 
-        fig.update_layout(
-            title="Distribution of Terminal Wealth (Fine-Grained)",
-            xaxis_title="Terminal Balance ($)",
-            yaxis_title="Count",
-            showlegend=False,
-            hovermode="x unified",
-            margin=dict(t=80, b=50, l=50, r=50),
-        )
+            st.plotly_chart(fig, use_container_width=True)
 
-        st.plotly_chart(fig, use_container_width=True)
+        with col2:
+            # Display portfolio info
+            st.markdown("### Portfolio Details")
+            st.metric("Total Value", f"${portfolio_value:,.0f}")
+
+            # Show P10-P90 range
+            st.caption(
+                f"Range: ${portfolio_value_p10:,.0f} (P10) - ${portfolio_value_p90:,.0f} (P90)"
+            )
+
+            st.markdown("#### Allocation")
+            for ac, amt in dollar_amounts.items():
+                # Use actual percentage if calculated, otherwise use original weight
+                if actual_percentages and ac in actual_percentages:
+                    pct = actual_percentages[ac]
+                else:
+                    pct = portfolio_weights[ac]
+                st.write(f"**{ac}**: ${amt:,.0f} ({pct:.1f}%)")
+
+            st.markdown("#### Phase")
+            st.markdown(
+                f'<span style="color: {phase_color}; font-weight: bold;">{phase}</span>',
+                unsafe_allow_html=True,
+            )
+
+        # Show percentage below chart
+        st.caption(f"Total Allocation: {sum(weights_array):.1f}%")
 
     def plot_comparison_chart(
         self,
