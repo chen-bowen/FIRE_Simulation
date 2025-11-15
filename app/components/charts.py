@@ -40,13 +40,13 @@ class ChartComponent:
             title: Chart title
             current_age: Current age for age-based x-axis labels (optional)
         """
-        years = np.arange(result.horizon_periods) / result.periods_per_year
+        time_periods = np.arange(result.horizon_periods) / result.periods_per_year
         # Use age if provided, otherwise use years
         if current_age is not None:
-            x = current_age + years
+            x = current_age + time_periods
             xaxis_title = "Age"
         else:
-            x = years
+            x = time_periods
             xaxis_title = "Years"
 
         fig = go.Figure()
