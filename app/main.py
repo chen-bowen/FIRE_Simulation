@@ -122,9 +122,16 @@ def main():
             }
             if portfolio_weights:
                 fig = sidebar._create_portfolio_pie_chart(portfolio_weights)
-                # Remove chart title and make it smaller for the summary section
+                # Add title with asset class count and adjust layout for better text visibility
+                num_assets = len(portfolio_weights)
+                asset_text = "asset class" if num_assets == 1 else "asset classes"
                 fig.update_layout(
-                    title="", height=250, margin=dict(l=10, r=10, t=10, b=10)
+                    title=f"{num_assets} {asset_text}",
+                    height=250,
+                    margin=dict(
+                        l=40, r=40, t=40, b=40
+                    ),  # Increased margins for outside text
+                    showlegend=False,  # Hide legend to prevent overlap with text labels
                 )
                 st.plotly_chart(
                     fig, use_container_width=True, key="summary_portfolio_chart"
