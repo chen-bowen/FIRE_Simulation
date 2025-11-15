@@ -146,41 +146,49 @@ class ChartComponent:
         if current_year is None:
             current_year = datetime.now().year
 
-        # Interactive controls
-        col1, col2 = st.columns(2)
+        # Use a container to group controls and chart together
+        # This helps prevent scroll jumping when radio buttons change
+        with st.container():
+            # Interactive controls
+            col1, col2 = st.columns(2)
 
-        with col1:
-            metric_type = st.radio(
-                "Metric Type",
-                ["Portfolio", "Spending"],
-                key="portfolio_metric_type",
-            )
-
-        with col2:
-            chart_type = st.radio(
-                "Chart Type",
-                ["Min/Max/Mean", "Spending vs Returns"],
-                key="portfolio_chart_type",
-            )
-
-        # Render appropriate chart based on selections
-        if chart_type == "Min/Max/Mean":
-            if metric_type == "Portfolio":
-                self._plot_portfolio_quantiles(result, title, current_age, current_year)
-            else:  # Spending
-                self._plot_spending_quantiles(
-                    result, "Spending Quantiles", current_age, current_year
+            with col1:
+                metric_type = st.radio(
+                    "Metric Type",
+                    ["Portfolio", "Spending"],
+                    key="portfolio_metric_type",
                 )
-        else:  # Spending vs Returns
-            self._plot_spending_vs_returns(result, current_year)
 
-        # Add note about today's dollars (styled like examples)
-        st.markdown(
-            '<div style="background-color: #e8d5ff; padding: 10px; border-radius: 5px; margin-top: 10px;">'
-            '<strong>Note:</strong> All values on this page are in "Today\'s Dollars"'
-            "</div>",
-            unsafe_allow_html=True,
-        )
+            with col2:
+                chart_type = st.radio(
+                    "Chart Type",
+                    ["Min/Max/Mean", "Spending vs Returns"],
+                    key="portfolio_chart_type",
+                )
+
+            # Add a small spacer to maintain visual consistency
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Render appropriate chart based on selections
+            if chart_type == "Min/Max/Mean":
+                if metric_type == "Portfolio":
+                    self._plot_portfolio_quantiles(
+                        result, title, current_age, current_year
+                    )
+                else:  # Spending
+                    self._plot_spending_quantiles(
+                        result, "Spending Quantiles", current_age, current_year
+                    )
+            else:  # Spending vs Returns
+                self._plot_spending_vs_returns(result, current_year)
+
+            # Add note about today's dollars (styled like examples)
+            st.markdown(
+                '<div style="background-color: #e8d5ff; padding: 10px; border-radius: 5px; margin-top: 10px;">'
+                '<strong>Note:</strong> All values on this page are in "Today\'s Dollars"'
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
     def _plot_portfolio_quantiles(
         self,
@@ -254,7 +262,7 @@ class ChartComponent:
                 line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
                 fill="tonexty",
                 fillcolor="rgba(26, 188, 156, 0.15)",
-                showlegend=True,
+                showlegend=False,
             )
         )
 
@@ -276,7 +284,7 @@ class ChartComponent:
                 line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
                 fill="tonexty",
                 fillcolor="rgba(26, 188, 156, 0.25)",
-                showlegend=True,
+                showlegend=False,
             )
         )
 
@@ -298,7 +306,7 @@ class ChartComponent:
                 line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
                 fill="tonexty",
                 fillcolor="rgba(26, 188, 156, 0.35)",
-                showlegend=True,
+                showlegend=False,
             )
         )
 
@@ -309,7 +317,7 @@ class ChartComponent:
                 y=result.median_path,
                 name="Median",
                 line=dict(color="#1abc9c", width=2.5),
-                showlegend=True,
+                showlegend=False,
             )
         )
 
@@ -318,10 +326,7 @@ class ChartComponent:
             xaxis_title=xaxis_title,
             yaxis_title="Portfolio Value ($)",
             hovermode="x unified",
-            showlegend=True,
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
-            ),
+            showlegend=False,
         )
 
         # Format x-axis
@@ -730,7 +735,7 @@ class ChartComponent:
                         values=values,
                         hole=0.4,  # Donut chart
                         textinfo="label+percent",
-                        textposition="outside",
+                        textposition="auto",  # Auto-position labels inside/outside based on space
                         hovertemplate="%{hovertext}<extra></extra>",
                         hovertext=hover_text,
                         marker=dict(colors=colors, line=dict(color="#ffffff", width=2)),
@@ -749,9 +754,10 @@ class ChartComponent:
 
             fig.update_layout(
                 title="",
-                showlegend=True,
-                height=400,
-                margin=dict(l=20, r=20, t=20, b=20),
+                showlegend=False,
+                height=450,
+                margin=dict(l=60, r=60, t=30, b=50),
+                legend=dict(visible=False),
             )
 
             st.plotly_chart(fig, use_container_width=True)

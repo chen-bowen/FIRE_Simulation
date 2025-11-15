@@ -551,9 +551,26 @@ class SimulationService:
                 cov = np.cov(log_returns.T)
             L = self._safe_cholesky(cov)
 
+            use_dynamic_withdrawal = params.withdrawal_params is not None
+            initial_category_spending: Optional[Dict[str, float]] = None
+
+            if use_dynamic_withdrawal:
+                initial_category_spending = (
+                    self.portfolio_service.calculate_initial_category_spending(
+                        params.withdrawal_params
+                    )
+                )
+
+            # Determine total annual spending
+            total_annual_spend = (
+                sum(initial_category_spending.values())
+                if use_dynamic_withdrawal
+                else params.annual_spend
+            )
+
             contrib_pp, spend_pp_nominal_year1 = (
                 self.portfolio_service.calculate_period_amounts(
-                    params.annual_contrib, params.annual_spend, params.frequency
+                    params.annual_contrib, total_annual_spend, params.frequency
                 )
             )
 
@@ -604,6 +621,7 @@ class SimulationService:
                 )
 
                 # Step through accumulation (no spending) and retirement (spending)
+                spend_pp = spend_pp_nominal_year1
                 for i in range(total_periods):
                     in_accumulation = i < pre_retire_periods
                     if in_accumulation:
@@ -611,11 +629,33 @@ class SimulationService:
                         spend = 0.0
                     else:
                         contrib = 0.0
-                        # use fixed spending here (could be extended to dynamic)
-                        if i == pre_retire_periods:
-                            spend_pp = spend_pp_nominal_year1
+                        # Handle dynamic vs fixed spending
+                        if use_dynamic_withdrawal:
+                            periods_into_retirement = i - pre_retire_periods
+                            years_into_retirement = periods_into_retirement / ppy
+                            annual_withdrawal = (
+                                self.portfolio_service.calculate_dynamic_withdrawal(
+                                    params.withdrawal_params,
+                                    initial_category_spending,
+                                    years_into_retirement,
+                                    avg_inflation_rate,
+                                    params.frequency,
+                                )
+                            )
+                            spend_pp = (
+                                self.portfolio_service.calculate_period_withdrawal(
+                                    annual_withdrawal,
+                                    params.frequency,
+                                    params.pacing,
+                                    i,
+                                )
+                            )
                         else:
-                            spend_pp *= 1.0 + inflation_pp
+                            # Fixed spending; apply inflation every period
+                            if i == pre_retire_periods:
+                                spend_pp = spend_pp_nominal_year1
+                            else:
+                                spend_pp *= 1.0 + inflation_pp
                         spend = spend_pp
 
                     # Handle single asset case

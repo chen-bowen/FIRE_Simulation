@@ -809,7 +809,7 @@ class SidebarComponent:
                     labels=labels,
                     values=values,
                     textinfo="label+percent",
-                    textposition="outside",
+                    textposition="auto",  # Auto-position labels inside/outside based on space
                     hovertemplate="%{hovertext}<extra></extra>",
                     hovertext=hover_text,
                     pull=[0.05] * len(labels),  # Slight pull for better visibility
@@ -819,9 +819,10 @@ class SidebarComponent:
 
         fig.update_layout(
             title="Expense Category Distribution",
-            showlegend=True,
-            height=400,
-            margin=dict(l=20, r=20, t=40, b=20),
+            showlegend=False,
+            height=450,
+            margin=dict(l=60, r=60, t=50, b=50),
+            legend=dict(visible=False),
         )
 
         return fig
@@ -864,7 +865,7 @@ class SidebarComponent:
                     labels=labels,
                     values=values,
                     textinfo="label+percent",
-                    textposition="outside",
+                    textposition="auto",  # Auto-position labels inside/outside based on space
                     hovertemplate="%{hovertext}<br><extra>Click to adjust</extra>",
                     hovertext=hover_text,
                     pull=[0.05] * len(labels),  # Slight pull for better visibility
@@ -875,10 +876,11 @@ class SidebarComponent:
 
         fig.update_layout(
             title="Portfolio Allocation (Click slices to adjust)",
-            showlegend=True,
-            height=400,
-            margin=dict(l=20, r=20, t=50, b=20),
+            showlegend=False,
+            height=450,
+            margin=dict(l=60, r=60, t=60, b=50),
             hovermode="closest",
+            legend=dict(visible=False),
         )
 
         # Add click event support - make slices more interactive

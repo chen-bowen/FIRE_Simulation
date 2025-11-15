@@ -36,7 +36,7 @@ def main():
     st.set_page_config(
         page_title="Retirement Planner", layout="wide", initial_sidebar_state="expanded"
     )
-    st.title("Retirement Planner: Historical + Monte Carlo")
+    st.title("Retirement Planner")
 
     # Initialize UI components
     sidebar = SidebarComponent()  # Handles user input form
@@ -127,10 +127,10 @@ def main():
                 asset_text = "asset class" if num_assets == 1 else "asset classes"
                 fig.update_layout(
                     title=f"{num_assets} {asset_text}",
-                    height=250,
+                    height=280,
                     margin=dict(
-                        l=40, r=40, t=40, b=40
-                    ),  # Increased margins for outside text
+                        l=50, r=50, t=50, b=50
+                    ),  # Adequate margins for auto-positioned labels
                     showlegend=False,  # Hide legend to prevent overlap with text labels
                 )
                 st.plotly_chart(
@@ -331,9 +331,6 @@ def main():
             ),
             asset_class_mapping=asset_class_mapping,
         )
-
-        # Display statistics
-        results.display_statistics(simulation_result)
 
 
 if __name__ == "__main__":
