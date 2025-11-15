@@ -108,7 +108,11 @@ def main():
         )
 
     with col4:
-        st.markdown("**Portfolio Allocation**")
+        st.metric(
+            "Portfolio",
+            "",
+            help="Portfolio allocation",
+        )
         if (
             "portfolio_weights" in st.session_state
             and st.session_state.portfolio_weights
@@ -118,8 +122,10 @@ def main():
             }
             if portfolio_weights:
                 fig = sidebar._create_portfolio_pie_chart(portfolio_weights)
-                # Make the chart smaller for the summary section
-                fig.update_layout(height=250, margin=dict(l=10, r=10, t=30, b=10))
+                # Remove chart title and make it smaller for the summary section
+                fig.update_layout(
+                    title="", height=250, margin=dict(l=10, r=10, t=10, b=10)
+                )
                 st.plotly_chart(
                     fig, use_container_width=True, key="summary_portfolio_chart"
                 )
