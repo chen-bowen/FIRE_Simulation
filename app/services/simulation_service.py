@@ -586,10 +586,78 @@ class SimulationService:
             )
 
             # Get historical asset returns
+            ticker_list = list(returns_df.columns)
             asset_returns = returns_df.to_numpy()
             available_periods = len(asset_returns) - 1
 
+            # Calculate statistics for all assets (for Monte Carlo when needed)
+            # Crypto and non-crypto are treated the same: use historical when available, MC when not
+            # IMPORTANT: For Monte Carlo, we need to use geometric mean (log-space) for proper compounding
+            # Arithmetic mean overestimates long-term returns due to volatility drag
+            # Convert to log returns, calculate mean, then convert back
+            log_returns = np.log1p(
+                asset_returns
+            )  # log(1 + r) ≈ r for small r, but handles large returns correctly
+            log_means = np.mean(log_returns, axis=0)
+            # Ensure result is always an array (even for single asset)
+            if log_means.ndim == 0:
+                log_means = np.array([log_means])
+
+            # Calculate geometric mean (this is what we should use for long-term projections)
+            # Geometric mean = exp(mean(log(1+r))) - 1, which accounts for volatility drag
+            geometric_means = np.expm1(log_means)  # exp(x) - 1, inverse of log1p
+            # Ensure result is always an array (even for single asset)
+            if geometric_means.ndim == 0:
+                geometric_means = np.array([geometric_means])
+
+            # For Monte Carlo, we'll work in log-space to preserve proper distribution
+            # The mean in log-space is log_means (already calculated)
+            # Covariance should be calculated on log returns for proper correlation structure
+            combined_cov = np.cov(log_returns.T)
+            combined_cov_full = combined_cov + 1e-12 * np.eye(combined_cov.shape[0])
+            L = np.linalg.cholesky(combined_cov_full)
+
+            # Calculate realistic bounds based on actual historical data
+            # Use percentiles to avoid extreme outliers from skewing the bounds
+            # Ensure result is always an array (even for single asset)
+            min_returns = np.percentile(asset_returns, 0.1, axis=0)  # 0.1th percentile
+            max_returns = np.percentile(
+                asset_returns, 99.9, axis=0
+            )  # 99.9th percentile
+            # Convert to array if scalar (happens when only 1 asset)
+            if min_returns.ndim == 0:
+                min_returns = np.array([min_returns])
+            if max_returns.ndim == 0:
+                max_returns = np.array([max_returns])
+            # Ensure bounds are realistic (much tighter than before)
+            ppy = periods_per_year(params.frequency)
+            if ppy == 252:  # Daily
+                # Daily: Realistic extreme bounds (Black Monday was -22%, flash crashes can hit -30%)
+                min_bound, max_bound = -0.3, 0.3  # -30% to +30% per day (very extreme)
+            else:  # Monthly
+                # Monthly: Realistic extreme bounds
+                min_bound, max_bound = (
+                    -0.5,
+                    0.5,
+                )  # -50% to +50% per month (very extreme)
+            # Use the tighter of historical percentiles or fixed bounds
+            min_returns = np.maximum(min_returns, min_bound)
+            max_returns = np.minimum(max_returns, max_bound)
+
+            # Diagnostic: Print annualized returns to verify they're reasonable
+            annualized_geometric = (1 + geometric_means) ** ppy - 1
+            print(
+                f"Diagnostic - Annualized geometric mean returns: {annualized_geometric}"
+            )
+            print(
+                f"Diagnostic - Portfolio weighted annualized return: {np.dot(weights, annualized_geometric):.2%}"
+            )
+            print(
+                f"Diagnostic - Return bounds (min, max): {min_returns}, {max_returns}"
+            )
+
             # Check if we have enough historical data for accumulation phase
+            # This applies to all assets (crypto and non-crypto treated the same)
             if available_periods < pre_retire_periods:
                 print(
                     f"Warning: Only {available_periods / ppy:.1f} years of historical data available, "
@@ -600,21 +668,19 @@ class SimulationService:
             else:
                 actual_pre_retire_periods = pre_retire_periods
 
-            # Calculate historical moments for Monte Carlo calibration
-            means = np.mean(asset_returns, axis=0)
-            cov = np.cov(asset_returns.T)
-
-            # Cholesky decomposition for Monte Carlo
-            L = np.linalg.cholesky(cov + 1e-12 * np.eye(cov.shape[0]))
-
             # Determine number of historical start points
-            max_historical_starts = min(
-                n_paths, available_periods - actual_pre_retire_periods + 1
-            )
-            if max_historical_starts < 1:
-                max_historical_starts = 1
-                use_bootstrap = True
+            if actual_pre_retire_periods > 0:
+                max_historical_starts = min(
+                    n_paths, available_periods - actual_pre_retire_periods + 1
+                )
+                if max_historical_starts < 1:
+                    max_historical_starts = 1
+                    use_bootstrap = True
+                else:
+                    use_bootstrap = False
             else:
+                # No historical data: use Monte Carlo for everything
+                max_historical_starts = 1
                 use_bootstrap = False
 
             balances_over_time: List[np.ndarray] = []
@@ -630,42 +696,75 @@ class SimulationService:
             # Generate simulation paths
             for path_idx in range(n_paths):
                 # Select historical start point for accumulation phase
-                if use_bootstrap:
-                    # Bootstrap sampling: randomly select starting points
-                    if path_idx % 3 == 0:
-                        historical_start = rng.integers(
-                            0, available_periods - actual_pre_retire_periods + 1
-                        )
-                    elif path_idx % 3 == 1:
-                        # Staggered sampling
-                        step = max(1, available_periods // 50)
-                        historical_start = (path_idx * step) % (
-                            available_periods - actual_pre_retire_periods + 1
-                        )
+                historical_start = 0
+                historical_end = 0
+                if actual_pre_retire_periods > 0:
+                    if use_bootstrap:
+                        # Bootstrap sampling: randomly select starting points
+                        if path_idx % 3 == 0:
+                            historical_start = rng.integers(
+                                0,
+                                max(
+                                    1, available_periods - actual_pre_retire_periods + 1
+                                ),
+                            )
+                        elif path_idx % 3 == 1:
+                            # Staggered sampling
+                            step = max(1, available_periods // 50)
+                            historical_start = (path_idx * step) % max(
+                                1, available_periods - actual_pre_retire_periods + 1
+                            )
+                        else:
+                            # Weighted sampling (prefer more recent data)
+                            weights_arr = np.arange(
+                                1, available_periods - actual_pre_retire_periods + 2
+                            )
+                            weights_arr = weights_arr / weights_arr.sum()
+                            historical_start = rng.choice(
+                                available_periods - actual_pre_retire_periods + 1,
+                                p=weights_arr,
+                            )
                     else:
-                        # Weighted sampling (prefer more recent data)
-                        weights_arr = np.arange(
-                            1, available_periods - actual_pre_retire_periods + 2
+                        # Rolling window with step size
+                        step = max(
+                            1,
+                            (available_periods - actual_pre_retire_periods)
+                            // max_historical_starts,
                         )
-                        weights_arr = weights_arr / weights_arr.sum()
-                        historical_start = rng.choice(
-                            available_periods - actual_pre_retire_periods + 1,
-                            p=weights_arr,
-                        )
-                else:
-                    # Rolling window with step size
-                    step = max(
-                        1,
-                        (available_periods - actual_pre_retire_periods)
-                        // max_historical_starts,
+                        historical_start = (path_idx % max_historical_starts) * step
+
+                    historical_end = historical_start + actual_pre_retire_periods
+
+                # Extract historical returns for accumulation phase (includes all assets: crypto and non-crypto)
+                historical_returns = None
+                historical_dates = None
+                if actual_pre_retire_periods > 0:
+                    historical_returns = asset_returns[historical_start:historical_end]
+                    historical_dates = returns_df.index[historical_start:historical_end]
+
+                # Calculate how many periods need Monte Carlo extension
+                periods_needing_mc = total_periods - actual_pre_retire_periods
+
+                # Generate Monte Carlo returns only for periods where data is not available
+                # This includes: extension of accumulation phase + entire retirement phase
+                # Generate in log-space, then convert back to arithmetic returns
+                # IMPORTANT: Bound returns to realistic values (-99% to +500% per period to handle extreme cases)
+                mc_extension_returns = None
+                if periods_needing_mc > 0:
+                    z_extension = rng.standard_normal(
+                        size=(periods_needing_mc, len(ticker_list))
                     )
-                    historical_start = (path_idx % max_historical_starts) * step
-
-                historical_end = historical_start + actual_pre_retire_periods
-
-                # Extract historical returns for accumulation phase
-                historical_returns = asset_returns[historical_start:historical_end]
-                historical_dates = returns_df.index[historical_start:historical_end]
+                    correlated_log_returns = z_extension @ L.T
+                    # Add log means and convert back to arithmetic space
+                    log_returns_mc = correlated_log_returns + log_means
+                    mc_extension_returns = np.expm1(
+                        log_returns_mc
+                    )  # Convert log returns to arithmetic returns
+                    # Bound returns to realistic values based on historical data
+                    for j in range(len(ticker_list)):
+                        mc_extension_returns[:, j] = np.clip(
+                            mc_extension_returns[:, j], min_returns[j], max_returns[j]
+                        )
 
                 # Initialize portfolio state
                 state = PortfolioState(balance=params.initial_balance, weights=weights)
@@ -673,30 +772,65 @@ class SimulationService:
                 spend_pp = spend_pp_nominal_year1
                 prev_date = None
 
-                # PHASE 1: Historical accumulation phase (pre-retirement)
-                for i in range(actual_pre_retire_periods):
-                    date_i = historical_dates[i] if i < len(historical_dates) else None
+                # PHASE 1: Accumulation phase (pre-retirement)
+                for i in range(pre_retire_periods):
+                    # Use historical data when available, Monte Carlo when not
+                    if i < actual_pre_retire_periods and historical_returns is not None:
+                        # Use historical data (includes all assets: crypto and non-crypto)
+                        period_returns = historical_returns[i]
+                    else:
+                        # Use Monte Carlo for extension period (when historical data runs out)
+                        mc_idx = i - actual_pre_retire_periods
+                        if (
+                            mc_extension_returns is not None
+                            and mc_idx >= 0
+                            and mc_idx < len(mc_extension_returns)
+                        ):
+                            period_returns = mc_extension_returns[mc_idx]
+                        else:
+                            # Fallback: generate on-the-fly if needed (in log-space)
+                            z = rng.standard_normal(size=len(ticker_list))
+                            log_returns_period = (z @ L.T) + log_means
+                            period_returns = np.expm1(
+                                log_returns_period
+                            )  # Convert to arithmetic returns
+                            # Bound returns to realistic values based on historical data
+                            period_returns = np.clip(
+                                period_returns, min_returns, max_returns
+                            )
+
+                    # Calculate portfolio return
+                    portfolio_return = np.dot(weights, period_returns)
+
+                    date_i = (
+                        historical_dates[i]
+                        if (historical_dates is not None and i < len(historical_dates))
+                        else None
+                    )
 
                     # Handle different pacing modes
                     if (
                         params.frequency == "daily"
                         and params.pacing == "monthly-boundary"
                     ):
-                        is_month_boundary = (i == 0) or (
-                            historical_dates[i - 1].month != date_i.month
-                        )
+                        if date_i is not None:
+                            is_month_boundary = (i == 0) or (
+                                historical_dates[i - 1].month != date_i.month
+                            )
+                        else:
+                            is_month_boundary = (i % (ppy // 12)) == 0
                         contrib = contrib_pp if is_month_boundary else 0.0
                         contrib *= ppy / 12
                     else:
                         contrib = contrib_pp
 
-                    # Step portfolio with historical returns
+                    # Step portfolio with combined returns
                     state = self.portfolio_service.step_portfolio(
                         state=state,
                         contrib=contrib,
                         spend=0.0,  # No spending during accumulation
                         inflation_rate_annual=params.inflation_rate_annual,
-                        period_return=historical_returns[i],
+                        period_return=portfolio_return,  # Use portfolio return
                         period_index=date_i,
                         prev_index=prev_date,
                         freq=params.frequency,
@@ -705,14 +839,33 @@ class SimulationService:
                     prev_date = date_i
 
                 # PHASE 2: Monte Carlo retirement phase (post-retirement)
-                # Generate random returns for retirement period
-                z = rng.standard_normal(size=(retire_periods, means.shape[0]))
-                correlated = z @ L.T
-                mc_returns = correlated + means
-
                 for i in range(retire_periods):
-                    period_idx = actual_pre_retire_periods + i
+                    period_idx = pre_retire_periods + i
                     years_into_retirement = i / ppy
+
+                    # Use Monte Carlo for retirement phase (all assets: crypto and non-crypto)
+                    # Index into MC extension: retirement starts after accumulation extension
+                    mc_idx = (pre_retire_periods - actual_pre_retire_periods) + i
+                    if (
+                        mc_extension_returns is not None
+                        and mc_idx >= 0
+                        and mc_idx < len(mc_extension_returns)
+                    ):
+                        period_returns = mc_extension_returns[mc_idx]
+                    else:
+                        # Fallback: generate on-the-fly if needed (in log-space)
+                        z = rng.standard_normal(size=len(ticker_list))
+                        log_returns_period = (z @ L.T) + log_means
+                        period_returns = np.expm1(
+                            log_returns_period
+                        )  # Convert to arithmetic returns
+                        # Bound returns to realistic values based on historical data
+                        period_returns = np.clip(
+                            period_returns, min_returns, max_returns
+                        )
+
+                    # Calculate portfolio return
+                    portfolio_return = np.dot(weights, period_returns)
 
                     # Calculate spending for this period
                     if use_dynamic_withdrawal:
@@ -759,13 +912,13 @@ class SimulationService:
                     else:
                         spend = spend_pp
 
-                    # Step portfolio with Monte Carlo returns
+                    # Step portfolio with combined Monte Carlo returns
                     state = self.portfolio_service.step_portfolio(
                         state=state,
                         contrib=0.0,  # No contributions during retirement
                         spend=spend,
                         inflation_rate_annual=avg_inflation_rate,
-                        period_return=mc_returns[i],
+                        period_return=portfolio_return,  # Use portfolio return
                         period_index=None,  # No date for Monte Carlo
                         prev_index=None,
                         freq=params.frequency,

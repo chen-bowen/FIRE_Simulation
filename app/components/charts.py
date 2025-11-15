@@ -30,9 +30,24 @@ class ChartComponent:
     - Adaptive styling based on simulation type (Historical vs Monte Carlo)
     """
 
-    def plot_simulation_paths(self, result: SimulationResult, title: str) -> None:
-        """Plot simulation paths with percentile bands and sample paths."""
-        x = np.arange(result.horizon_periods) / result.periods_per_year
+    def plot_simulation_paths(
+        self, result: SimulationResult, title: str, current_age: int = None
+    ) -> None:
+        """Plot simulation paths with percentile bands and sample paths.
+
+        Args:
+            result: Simulation result data
+            title: Chart title
+            current_age: Current age for age-based x-axis labels (optional)
+        """
+        years = np.arange(result.horizon_periods) / result.periods_per_year
+        # Use age if provided, otherwise use years
+        if current_age is not None:
+            x = current_age + years
+            xaxis_title = "Age"
+        else:
+            x = years
+            xaxis_title = "Years"
 
         fig = go.Figure()
 
@@ -101,11 +116,24 @@ class ChartComponent:
 
         fig.update_layout(
             title=title,
-            xaxis_title="Years",
+            xaxis_title=xaxis_title,
             yaxis_title="Portfolio Value ($)",
             hovermode="x unified",
             showlegend=True,
         )
+
+        # Format x-axis to show integer values with adaptive tick interval
+        if current_age is not None:
+            max_age = current_age + (result.horizon_periods / result.periods_per_year)
+            age_range = max_age - current_age
+            # Adaptive tick interval: 5 years for long ranges, 2-3 for shorter
+            if age_range > 30:
+                dtick = 10
+            elif age_range > 15:
+                dtick = 5
+            else:
+                dtick = 2
+            fig.update_xaxes(tickmode="linear", dtick=dtick)
 
         st.plotly_chart(fig, use_container_width=True)
 
@@ -185,14 +213,33 @@ class ChartComponent:
         st.plotly_chart(fig, use_container_width=True)
 
     def plot_comparison_chart(
-        self, historical_result: SimulationResult, mc_result: SimulationResult
+        self,
+        historical_result: SimulationResult,
+        mc_result: SimulationResult,
+        current_age: int = None,
     ) -> None:
-        """Plot comparison between historical and Monte Carlo results."""
-        x_hist = (
+        """Plot comparison between historical and Monte Carlo results.
+
+        Args:
+            historical_result: Historical simulation result
+            mc_result: Monte Carlo simulation result
+            current_age: Current age for age-based x-axis labels (optional)
+        """
+        years_hist = (
             np.arange(historical_result.horizon_periods)
             / historical_result.periods_per_year
         )
-        x_mc = np.arange(mc_result.horizon_periods) / mc_result.periods_per_year
+        years_mc = np.arange(mc_result.horizon_periods) / mc_result.periods_per_year
+
+        # Use age if provided, otherwise use years
+        if current_age is not None:
+            x_hist = current_age + years_hist
+            x_mc = current_age + years_mc
+            xaxis_title = "Age"
+        else:
+            x_hist = years_hist
+            x_mc = years_mc
+            xaxis_title = "Years"
 
         fig = go.Figure()
 
@@ -250,10 +297,29 @@ class ChartComponent:
 
         fig.update_layout(
             title="Historical vs Monte Carlo Comparison",
-            xaxis_title="Years",
+            xaxis_title=xaxis_title,
             yaxis_title="Portfolio Value ($)",
             hovermode="x unified",
             showlegend=True,
         )
+
+        # Format x-axis to show integer values with adaptive tick interval
+        if current_age is not None:
+            max_age_hist = current_age + (
+                historical_result.horizon_periods / historical_result.periods_per_year
+            )
+            max_age_mc = current_age + (
+                mc_result.horizon_periods / mc_result.periods_per_year
+            )
+            max_age = max(max_age_hist, max_age_mc)
+            age_range = max_age - current_age
+            # Adaptive tick interval: 5 years for long ranges, 2-3 for shorter
+            if age_range > 30:
+                dtick = 10
+            elif age_range > 15:
+                dtick = 5
+            else:
+                dtick = 2
+            fig.update_xaxes(tickmode="linear", dtick=dtick)
 
         st.plotly_chart(fig, use_container_width=True)

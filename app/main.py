@@ -73,13 +73,7 @@ def main():
     pre_retire_years, retire_years = calculate_horizon_years(
         inputs["current_age"], inputs["retire_age"], inputs["plan_until_age"]
     )
-
-    # Show warning for long horizons
     total_years = pre_retire_years + retire_years
-    if total_years > 20:
-        st.warning(
-            f"⚠️ Planning {total_years} years ahead. Historical data may be limited to ~22 years for SPY/AGG."
-        )
 
     # Run button
     if st.button("Run Simulation", type="primary"):
@@ -98,12 +92,6 @@ def main():
                 inputs["weights"], list(returns_df.columns)
             )
 
-            # Debug: Check alignment
-            print(f"Debug - Original weights: {inputs['weights']}")
-            print(f"Debug - Data columns: {list(returns_df.columns)}")
-            print(f"Debug - Aligned weights: {weights}")
-            print(f"Debug - Aligned weights shape: {weights.shape}")
-
             # Create simulation parameters
             params = SimulationParams(
                 initial_balance=inputs["initial_balance"],
@@ -116,11 +104,6 @@ def main():
                 pacing=inputs["pacing"],
                 withdrawal_params=inputs.get("withdrawal_params"),  # May be None
             )
-
-            # Debug: Verify weights alignment
-            print(f"Debug - Final weights being passed to simulation: {weights}")
-            print(f"Debug - Final weights shape: {weights.shape}")
-            print(f"Debug - Data shape: {returns_df.shape}")
 
             # Run simulation (historical for pre-retirement, Monte Carlo for retirement)
             st.subheader("Simulation Results")
@@ -142,7 +125,9 @@ def main():
             results.display_data_warning(simulation_result, total_years)
 
             # Plot paths
-            charts.plot_simulation_paths(simulation_result, "Portfolio Paths")
+            charts.plot_simulation_paths(
+                simulation_result, "Portfolio Paths", current_age=inputs["current_age"]
+            )
 
             # Plot terminal wealth histogram
             charts.plot_terminal_wealth_histogram(simulation_result)
