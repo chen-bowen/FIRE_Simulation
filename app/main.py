@@ -122,15 +122,13 @@ def main():
             }
             if portfolio_weights:
                 fig = sidebar._create_portfolio_pie_chart(portfolio_weights)
-                # Add title with asset class count and adjust layout for better text visibility
-                num_assets = len(portfolio_weights)
-                asset_text = "asset class" if num_assets == 1 else "asset classes"
+                # Remove title and adjust layout for better spacing
                 fig.update_layout(
-                    title=f"{num_assets} {asset_text}",
-                    height=280,
+                    title="",  # Remove title since "Portfolio" metric already serves as title
+                    height=250,  # Reduced height for more compact display
                     margin=dict(
-                        l=50, r=50, t=50, b=50
-                    ),  # Adequate margins for auto-positioned labels
+                        l=20, r=20, t=0, b=20
+                    ),  # Minimal margins to bring chart closer to title
                     showlegend=False,  # Hide legend to prevent overlap with text labels
                 )
                 st.plotly_chart(
@@ -193,6 +191,17 @@ def main():
         wp = inputs["withdrawal_params"]
         inputs_for_hash["withdrawal_total"] = wp.total_annual_expense
         inputs_for_hash["withdrawal_cpi"] = wp.use_cpi_adjustment
+        # Include category percentages to detect changes in spending distribution
+        if wp.expense_categories:
+            category_percentages = {
+                cat.name: (
+                    cat.percentage if cat.percentage is not None else cat.current_amount
+                )
+                for cat in wp.expense_categories
+            }
+            inputs_for_hash["category_percentages"] = tuple(
+                sorted(category_percentages.items())
+            )
     inputs_hash = hashlib.md5(
         json.dumps(inputs_for_hash, sort_keys=True, default=str).encode()
     ).hexdigest()

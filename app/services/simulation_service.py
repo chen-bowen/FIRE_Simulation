@@ -80,6 +80,7 @@ class SimulationService:
             use_dynamic_withdrawal = params.withdrawal_params is not None
             initial_category_spending: Optional[Dict[str, float]] = None
             cpi_inflation_rates: Optional[pd.Series] = None
+            category_cpi_data: Dict[str, pd.Series] = {}
 
             if use_dynamic_withdrawal:
                 initial_category_spending = (
@@ -92,6 +93,21 @@ class SimulationService:
                     cpi_inflation_rates = self.data_service.calculate_inflation_rates()
                 except Exception:
                     cpi_inflation_rates = None
+
+                # Load category-specific CPI inflation rates if CPI adjustment is enabled
+                if params.withdrawal_params.use_cpi_adjustment:
+                    for category_name in initial_category_spending.keys():
+                        try:
+                            category_rates = (
+                                self.data_service.calculate_category_inflation_rates(
+                                    category_name
+                                )
+                            )
+                            if category_rates is not None:
+                                category_cpi_data[category_name] = category_rates
+                        except Exception:
+                            # If category-specific data unavailable, will fall back to general rate
+                            pass
 
             # Determine total annual spending
             total_annual_spend = (
@@ -201,12 +217,32 @@ class SimulationService:
 
                     # inflation rate for the current year (if CPI available)
                     year_inflation_rate = params.inflation_rate_annual
+                    category_inflation_rates: Optional[Dict[str, float]] = None
+
                     if cpi_inflation_rates is not None and isinstance(
                         date_i, (pd.Timestamp, pd.DatetimeIndex)
                     ):
                         year = date_i.year
                         if year in cpi_inflation_rates.index:
                             year_inflation_rate = float(cpi_inflation_rates.loc[year])
+
+                        # Get category-specific inflation rates for this year if available
+                        if (
+                            use_dynamic_withdrawal
+                            and params.withdrawal_params.use_cpi_adjustment
+                        ):
+                            category_inflation_rates = {}
+                            for (
+                                category_name,
+                                category_rates,
+                            ) in category_cpi_data.items():
+                                if year in category_rates.index:
+                                    category_inflation_rates[category_name] = float(
+                                        category_rates.loc[year]
+                                    )
+                            # If no category rates found, use None to fall back to general rate
+                            if not category_inflation_rates:
+                                category_inflation_rates = None
 
                     # compute contribution and spending for this period
                     if in_accumulation:
@@ -225,6 +261,7 @@ class SimulationService:
                                     years_into_retirement,
                                     year_inflation_rate,
                                     params.frequency,
+                                    category_inflation_rates,
                                 )
                             )
                             spend_pp = (
@@ -351,6 +388,7 @@ class SimulationService:
 
             use_dynamic_withdrawal = params.withdrawal_params is not None
             initial_category_spending: Optional[Dict[str, float]] = None
+            avg_category_inflation_rates: Optional[Dict[str, float]] = None
 
             if use_dynamic_withdrawal:
                 initial_category_spending = (
@@ -358,6 +396,25 @@ class SimulationService:
                         params.withdrawal_params
                     )
                 )
+
+                # Load average category-specific inflation rates if CPI adjustment is enabled
+                if params.withdrawal_params.use_cpi_adjustment:
+                    avg_category_inflation_rates = {}
+                    for category_name in initial_category_spending.keys():
+                        try:
+                            avg_rate = (
+                                self.data_service.get_average_category_inflation_rate(
+                                    category_name
+                                )
+                            )
+                            if avg_rate is not None:
+                                avg_category_inflation_rates[category_name] = avg_rate
+                        except Exception:
+                            # If category-specific data unavailable, will fall back to general rate
+                            pass
+                    # If no category rates found, use None to fall back to general rate
+                    if not avg_category_inflation_rates:
+                        avg_category_inflation_rates = None
 
             # Determine total annual spending
             total_annual_spend = (
@@ -422,6 +479,7 @@ class SimulationService:
                                     years_into_retirement,
                                     avg_inflation_rate,
                                     params.frequency,
+                                    avg_category_inflation_rates,
                                 )
                             )
                             spend_pp = (
@@ -553,6 +611,7 @@ class SimulationService:
 
             use_dynamic_withdrawal = params.withdrawal_params is not None
             initial_category_spending: Optional[Dict[str, float]] = None
+            avg_category_inflation_rates: Optional[Dict[str, float]] = None
 
             if use_dynamic_withdrawal:
                 initial_category_spending = (
@@ -560,6 +619,25 @@ class SimulationService:
                         params.withdrawal_params
                     )
                 )
+
+                # Load average category-specific inflation rates if CPI adjustment is enabled
+                if params.withdrawal_params.use_cpi_adjustment:
+                    avg_category_inflation_rates = {}
+                    for category_name in initial_category_spending.keys():
+                        try:
+                            avg_rate = (
+                                self.data_service.get_average_category_inflation_rate(
+                                    category_name
+                                )
+                            )
+                            if avg_rate is not None:
+                                avg_category_inflation_rates[category_name] = avg_rate
+                        except Exception:
+                            # If category-specific data unavailable, will fall back to general rate
+                            pass
+                    # If no category rates found, use None to fall back to general rate
+                    if not avg_category_inflation_rates:
+                        avg_category_inflation_rates = None
 
             # Determine total annual spending
             total_annual_spend = (
@@ -640,6 +718,7 @@ class SimulationService:
                                     years_into_retirement,
                                     avg_inflation_rate,
                                     params.frequency,
+                                    avg_category_inflation_rates,
                                 )
                             )
                             spend_pp = (
