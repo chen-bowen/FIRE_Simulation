@@ -49,10 +49,9 @@ Thumbs.db
 .streamlit/
 
 # Data files (if any)
-*.csv
 *.xlsx
 *.json
-data/
+
 
 # Logs
 *.log
