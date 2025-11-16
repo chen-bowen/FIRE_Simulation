@@ -117,11 +117,12 @@ The app will be available at `http://localhost:8501`
    - Sign in with GitHub
    - Click "New app"
    - Select your repository
-   - Set the main file path: `app/main.py`
+   - Set the main file path: `streamlit_app.py` (or leave blank - Streamlit Cloud will auto-detect it)
    - Click "Deploy"
 
 3. **Important Notes for Streamlit Cloud**
    - Ensure `requirements.txt` is in the root directory (✓ already present)
+   - The root-level `streamlit_app.py` entry point is automatically detected
    - The app will automatically install dependencies from `requirements.txt`
    - Data files in `data/` directory will be included automatically
    - No additional configuration needed
@@ -177,7 +178,7 @@ docker run -p 8501:8501 retirement-planner
 
 - [x] All dependencies listed in `requirements.txt`
 - [x] Data files present in `data/` directory
-- [x] Application entry point (`app/main.py`) is accessible
+- [x] Root-level entry point (`streamlit_app.py`) is present
 - [ ] Environment variables configured (if needed)
 - [ ] Port 8501 is accessible (or configured port)
 - [ ] Internet access for Yahoo Finance API calls
