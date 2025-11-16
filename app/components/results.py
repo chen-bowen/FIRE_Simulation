@@ -29,35 +29,41 @@ class ResultsComponent:
 
         with col2:
             median_terminal = np.median(result.terminal_balances)
+            # Format in millions for better readability
+            if median_terminal >= 1e6:
+                wealth_display = f"${median_terminal/1e6:.2f}M"
+            elif median_terminal >= 1e3:
+                wealth_display = f"${median_terminal/1e3:.1f}K"
+            else:
+                wealth_display = f"${median_terminal:.0f}"
             st.metric(
                 "Median Terminal Wealth",
-                format_currency(median_terminal),
+                wealth_display,
                 help="Median portfolio value at the end of the simulation",
             )
 
         with col3:
-            if result.data_limited:
-                st.metric(
-                    "Data Used",
-                    f"{result.available_years:.1f} years",
-                    help="Years of historical data used (may be less than requested)",
-                )
-            else:
-                st.metric(
-                    "Simulation Period",
-                    f"{result.horizon_periods / result.periods_per_year:.1f} years",
-                    help="Total simulation period",
-                )
+            st.metric(
+                "Simulation Period",
+                f"{result.horizon_periods / result.periods_per_year:.1f} years",
+                help="Total simulation period",
+            )
 
     def display_data_warning(self, result: SimulationResult, total_years: int) -> None:
         """Display warning about data limitations."""
-        if result.data_limited:
-            st.info(
-                f"📊 Using {result.available_years:.1f} years of available data "
-                f"(scaled down from {total_years:.0f} years requested)"
-            )
+        # Removed - not needed since we simulate forward anyway using Monte Carlo
+        pass
+
+    def display_rebalancing_events(self, result: SimulationResult) -> None:
+        """Display rebalancing events if any occurred."""
+        if result.rebalancing_events and len(result.rebalancing_events) > 0:
+            st.markdown("---")
+            st.subheader("📊 Portfolio Rebalancing Events")
+            for event in result.rebalancing_events:
+                st.info(f"📊 {event}")
             st.caption(
-                "Note: Retirement planning phases have been proportionally scaled to fit available data."
+                "Portfolio allocations are rebalanced annually to maintain target weights. "
+                "This resets all asset allocations back to your target percentages."
             )
 
     def display_summary_table(

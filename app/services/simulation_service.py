@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from app.config import get_config
 from app.schemas import (
     PortfolioState,
     SimulationError,
@@ -54,6 +55,171 @@ class SimulationService:
         # add tiny jitter for numerical stability
         jitter = 1e-12
         return np.linalg.cholesky(cov + jitter * np.eye(cov.shape[0]))
+
+    def _is_crypto_asset(self, ticker: str) -> bool:
+        """Check if a ticker is a crypto asset."""
+        return self.data_service.is_crypto_ticker(ticker)
+
+    def _cap_crypto_normal_returns(
+        self, returns: np.ndarray, tickers: List[str], frequency: str
+    ) -> np.ndarray:
+        """Cap normal crypto returns per period to prevent unrealistic compounding.
+
+        Args:
+            returns: Array of returns (can be 1D or 2D)
+            tickers: List of ticker symbols corresponding to returns
+            frequency: 'daily' or 'monthly'
+
+        Returns:
+            Returns array with crypto returns capped
+        """
+        if not tickers:
+            return returns
+
+        config = get_config()
+        max_return = (
+            config.crypto_max_daily_return
+            if frequency == "daily"
+            else config.crypto_max_monthly_return
+        )
+
+        # Handle both 1D and 2D arrays
+        if returns.ndim == 1:
+            # Single period, multiple assets
+            n_assets = returns.shape[0]
+            for i in range(min(len(tickers), n_assets)):
+                if self._is_crypto_asset(tickers[i]):
+                    returns[i] = np.clip(returns[i], -max_return, max_return)
+        else:
+            # Multiple periods, multiple assets
+            n_assets = returns.shape[1]
+            for i in range(min(len(tickers), n_assets)):
+                if self._is_crypto_asset(tickers[i]):
+                    returns[:, i] = np.clip(returns[:, i], -max_return, max_return)
+
+        return returns
+
+    def _inject_extreme_volatility_events(
+        self,
+        returns: np.ndarray,
+        tickers: List[str],
+        frequency: str,
+        rng: np.random.Generator,
+    ) -> np.ndarray:
+        """Inject rare extreme volatility events for crypto assets.
+
+        Args:
+            returns: Array of returns (can be 1D or 2D)
+            tickers: List of ticker symbols corresponding to returns
+            frequency: 'daily' or 'monthly'
+            rng: Random number generator
+
+        Returns:
+            Returns array with extreme events injected for crypto assets
+        """
+        if not tickers:
+            return returns
+
+        config = get_config()
+
+        # Handle both 1D and 2D arrays
+        if returns.ndim == 1:
+            # Single period, multiple assets
+            n_assets = returns.shape[0]
+            for i in range(min(len(tickers), n_assets)):
+                if self._is_crypto_asset(tickers[i]):
+                    # Random chance for extreme event
+                    if rng.random() < config.crypto_extreme_event_prob:
+                        # Most extreme events are crashes, some are rallies
+                        if rng.random() < config.crypto_crash_prob_ratio:
+                            # Extreme crash: -80% to -70%
+                            crash_size = rng.uniform(
+                                config.crypto_extreme_crash_min,
+                                config.crypto_extreme_crash_max,
+                            )
+                            returns[i] = crash_size
+                        else:
+                            # Extreme rally: +150% to +200%
+                            rally_size = rng.uniform(
+                                config.crypto_extreme_rally_min,
+                                config.crypto_extreme_rally_max,
+                            )
+                            returns[i] = rally_size
+        else:
+            # Multiple periods, multiple assets
+            n_assets = returns.shape[1]
+            for i in range(min(len(tickers), n_assets)):
+                if self._is_crypto_asset(tickers[i]):
+                    # Check each period for extreme events
+                    for period_idx in range(returns.shape[0]):
+                        if rng.random() < config.crypto_extreme_event_prob:
+                            if rng.random() < config.crypto_crash_prob_ratio:
+                                crash_size = rng.uniform(
+                                    config.crypto_extreme_crash_min,
+                                    config.crypto_extreme_crash_max,
+                                )
+                                returns[period_idx, i] = crash_size
+                            else:
+                                rally_size = rng.uniform(
+                                    config.crypto_extreme_rally_min,
+                                    config.crypto_extreme_rally_max,
+                                )
+                                returns[period_idx, i] = rally_size
+
+        return returns
+
+    def _apply_volatility_dampening(
+        self,
+        cov: np.ndarray,
+        tickers: List[str],
+        available_years: float,
+        projection_years: float,
+    ) -> np.ndarray:
+        """Apply volatility dampening for crypto assets when projecting beyond available data.
+
+        Args:
+            cov: Covariance matrix
+            tickers: List of ticker symbols
+            available_years: Years of available historical data
+            projection_years: Total years being projected
+
+        Returns:
+            Adjusted covariance matrix
+        """
+        config = get_config()
+
+        # Only apply dampening if projecting beyond available data
+        if (
+            projection_years <= available_years
+            or available_years < config.crypto_min_data_years
+        ):
+            return cov
+
+        years_beyond = projection_years - available_years
+        # Calculate dampening factor (max 50% reduction)
+        dampening_factor = min(
+            0.5, years_beyond * config.crypto_volatility_dampening / projection_years
+        )
+
+        # Create adjusted covariance matrix
+        adjusted_cov = cov.copy()
+
+        # Find crypto asset indices
+        crypto_indices = [
+            i for i, ticker in enumerate(tickers) if self._is_crypto_asset(ticker)
+        ]
+
+        # Apply dampening to crypto variance (diagonal) and covariance (off-diagonal)
+        for i in crypto_indices:
+            # Reduce variance for crypto assets
+            adjusted_cov[i, i] *= 1.0 - dampening_factor
+            # Also reduce covariance with other assets
+            for j in range(len(tickers)):
+                if i != j:
+                    adjusted_cov[i, j] *= 1.0 - dampening_factor
+                    adjusted_cov[j, i] *= 1.0 - dampening_factor
+
+        return adjusted_cov
 
     # --------------------- Historical Simulation --------------------- #
     def run_historical_simulation(
@@ -163,6 +329,7 @@ class SimulationService:
             returns_over_time: List[np.ndarray] = []
             terminal_balances: List[float] = []
             success_count = 0
+            rebalancing_events: List[str] = []
 
             rng = np.random.default_rng()
 
@@ -282,32 +449,38 @@ class SimulationService:
                         contrib = 0.0
                         spend = spend_pp
 
-                    # determine portfolio return for this period (portfolio-level)
+                    # Get per-asset returns for this period
                     period_asset_returns = window_returns[i]
-                    # Handle both single and multiple assets
+                    # Handle both single and multiple assets - convert to array
                     if n_assets == 1:
-                        portfolio_return = (
-                            float(
-                                period_asset_returns[0]
-                                if isinstance(period_asset_returns, np.ndarray)
-                                else period_asset_returns
-                            )
-                            * weights[0]
+                        period_returns_array = np.array(
+                            [
+                                float(
+                                    period_asset_returns[0]
+                                    if isinstance(period_asset_returns, np.ndarray)
+                                    else period_asset_returns
+                                )
+                            ]
                         )
                     else:
-                        portfolio_return = float(np.dot(period_asset_returns, weights))
+                        period_returns_array = period_asset_returns.astype(float)
 
-                    # step portfolio
-                    state = self.portfolio_service.step_portfolio(
+                    # Calculate portfolio return for tracking
+                    portfolio_return = float(np.dot(period_returns_array, weights))
+
+                    # step portfolio with per-asset returns
+                    state, rebal_msg = self.portfolio_service.step_portfolio(
                         state=state,
                         contrib=contrib,
                         spend=spend,
                         inflation_rate_annual=year_inflation_rate,
-                        period_return=portfolio_return,
+                        period_return=period_returns_array,
                         period_index=date_i,
                         prev_index=prev_date,
                         freq=params.frequency,
                     )
+                    if rebal_msg and rebal_msg not in rebalancing_events:
+                        rebalancing_events.append(rebal_msg)
 
                     balances[i] = state.balance
                     spending[i] = spend
@@ -357,6 +530,7 @@ class SimulationService:
                 sample_paths=sample_paths,
                 spending_over_time=median_spending,
                 returns_over_time=median_returns,
+                rebalancing_events=rebalancing_events if rebalancing_events else None,
             )
 
         except Exception as e:
@@ -371,6 +545,8 @@ class SimulationService:
         params: SimulationParams,
         n_paths: int = 1000,
         seed: Optional[int] = None,
+        tickers: Optional[List[str]] = None,
+        available_years: Optional[float] = None,
     ) -> SimulationResult:
         """Run Monte Carlo simulation.
 
@@ -439,6 +615,13 @@ class SimulationService:
                 avg_inflation_rate, params.frequency
             )
 
+            # Apply volatility dampening for crypto if projecting beyond available data
+            if tickers is not None and available_years is not None:
+                projection_years = params.pre_retire_years + params.retire_years
+                cov = self._apply_volatility_dampening(
+                    cov, tickers, available_years, projection_years
+                )
+
             # Cholesky for correlated asset returns
             L = self._safe_cholesky(cov)
 
@@ -447,6 +630,7 @@ class SimulationService:
             all_paths = np.zeros((n_paths, total_periods))
             all_spending = np.zeros((n_paths, total_periods))
             all_returns = np.zeros((n_paths, total_periods))
+            rebalancing_events: List[str] = []
 
             for p in range(n_paths):
                 state = PortfolioState(balance=params.initial_balance, weights=weights)
@@ -458,6 +642,18 @@ class SimulationService:
                 asset_returns = (
                     correlated + means
                 )  # assumes means are per-period additive
+
+                # Apply crypto handling if tickers are provided
+                if tickers is not None:
+                    # Step 1: Cap normal crypto returns
+                    asset_returns = self._cap_crypto_normal_returns(
+                        asset_returns, tickers, params.frequency
+                    )
+                    # Step 2: Inject rare extreme volatility events
+                    asset_returns = self._inject_extreme_volatility_events(
+                        asset_returns, tickers, params.frequency, rng
+                    )
+
                 portfolio_returns = asset_returns @ weights
 
                 for i in range(total_periods):
@@ -516,18 +712,24 @@ class SimulationService:
                             else 0.0
                         ) * (ppy / 12)
 
-                    # step portfolio
+                    # Get per-asset returns for this period
+                    period_returns_array = asset_returns[i].astype(float)
                     portfolio_return = float(portfolio_returns[i])
-                    state = self.portfolio_service.step_portfolio(
+
+                    # step portfolio with per-asset returns
+                    state, rebal_msg = self.portfolio_service.step_portfolio(
                         state=state,
                         contrib=contrib,
                         spend=spend,
                         inflation_rate_annual=avg_inflation_rate,
-                        period_return=portfolio_return,
+                        period_return=period_returns_array,
                         period_index=None,
                         prev_index=None,
                         freq=params.frequency,
+                        period_number=i,
                     )
+                    if rebal_msg and rebal_msg not in rebalancing_events:
+                        rebalancing_events.append(rebal_msg)
 
                     all_paths[p, i] = state.balance
                     all_spending[p, i] = spend
@@ -559,6 +761,7 @@ class SimulationService:
                 sample_paths=sample_paths,
                 spending_over_time=median_spending,
                 returns_over_time=median_returns,
+                rebalancing_events=rebalancing_events if rebalancing_events else None,
             )
 
         except Exception as e:
@@ -599,6 +802,11 @@ class SimulationService:
             # Otherwise, generate many hybrid paths: for each path, randomly pick historical accumulation (if any)
             rng = np.random.default_rng(seed)
 
+            # Get tickers from returns_df
+            tickers = list(returns_df.columns)
+            available_years = available_periods / ppy
+            projection_years = params.pre_retire_years + params.retire_years
+
             # Prepare Monte Carlo parameters from historical log-returns
             log_returns = np.log1p(asset_returns)
             log_means = np.mean(log_returns, axis=0)
@@ -607,6 +815,12 @@ class SimulationService:
                 cov = np.array([[np.var(log_returns.flatten())]])
             else:
                 cov = np.cov(log_returns.T)
+
+            # Apply volatility dampening for crypto if projecting beyond available data
+            cov = self._apply_volatility_dampening(
+                cov, tickers, available_years, projection_years
+            )
+
             L = self._safe_cholesky(cov)
 
             use_dynamic_withdrawal = params.withdrawal_params is not None
@@ -667,6 +881,7 @@ class SimulationService:
             returns_over_time: List[np.ndarray] = []
             terminal_balances: List[float] = []
             success_count = 0
+            rebalancing_events: List[str] = []
 
             for path_idx in range(n_paths):
                 state = PortfolioState(balance=params.initial_balance, weights=weights)
@@ -690,6 +905,14 @@ class SimulationService:
                 z = rng.standard_normal(size=(remaining_periods, n_assets))
                 mc_log_returns = z @ L.T + log_means
                 mc_arith_returns = np.expm1(mc_log_returns)
+
+                # Apply crypto handling to Monte Carlo returns
+                mc_arith_returns = self._cap_crypto_normal_returns(
+                    mc_arith_returns, tickers, params.frequency
+                )
+                mc_arith_returns = self._inject_extreme_volatility_events(
+                    mc_arith_returns, tickers, params.frequency, rng
+                )
 
                 # Build full sequence of portfolio returns
                 full_asset_returns = (
@@ -737,7 +960,7 @@ class SimulationService:
                                 spend_pp *= 1.0 + inflation_pp
                         spend = spend_pp
 
-                    # Handle single asset case
+                    # Get per-asset returns for this period
                     if n_assets == 1:
                         # full_asset_returns[i] is shape (1,) when 2D, or scalar when 1D
                         period_return_val = (
@@ -745,20 +968,26 @@ class SimulationService:
                             if full_asset_returns.ndim == 2
                             else full_asset_returns[i]
                         )
+                        period_returns_array = np.array([float(period_return_val)])
                         portfolio_return = float(period_return_val) * float(weights[0])
                     else:
-                        portfolio_return = float(np.dot(full_asset_returns[i], weights))
+                        period_returns_array = full_asset_returns[i].astype(float)
+                        portfolio_return = float(np.dot(period_returns_array, weights))
 
-                    state = self.portfolio_service.step_portfolio(
+                    # step portfolio with per-asset returns
+                    state, rebal_msg = self.portfolio_service.step_portfolio(
                         state=state,
                         contrib=contrib,
                         spend=spend,
                         inflation_rate_annual=avg_inflation_rate,
-                        period_return=portfolio_return,
+                        period_return=period_returns_array,
                         period_index=None,
                         prev_index=None,
                         freq=params.frequency,
+                        period_number=i,
                     )
+                    if rebal_msg and rebal_msg not in rebalancing_events:
+                        rebalancing_events.append(rebal_msg)
 
                     balances[i] = state.balance
                     spending[i] = spend
@@ -804,6 +1033,7 @@ class SimulationService:
                 sample_paths=sample_paths,
                 spending_over_time=median_spending,
                 returns_over_time=median_returns,
+                rebalancing_events=rebalancing_events if rebalancing_events else None,
             )
 
         except Exception as e:

@@ -35,6 +35,7 @@ class DataService:
         self._cpi_inflation_rates: Optional[pd.Series] = None
         self._category_cpi_data: Dict[str, pd.DataFrame] = {}
         self._category_inflation_rates: Dict[str, pd.Series] = {}
+        self._income_data: Dict[str, pd.DataFrame] = {}
 
         # Map expense category names to CPI file names
         self.category_cpi_mapping = {
@@ -46,6 +47,17 @@ class DataService:
             "Recreation": "Recreation_CPI.csv",
             "Education and communication": "Education_CPI.csv",
             "Other goods and services": "Other_CPI.csv",
+        }
+
+        # Map education level strings to income CSV filenames
+        self.education_income_mapping = {
+            "Less than high school": "Less_High_school_income.csv",
+            "High school": "High_School_income.csv",
+            "Some college": "Some_college_income.csv",
+            "Bachelor's degree": "Bachelors_Income.csv",
+            "Master's degree": "Advanced_degree_income.csv",
+            "Professional degree": "Advanced_degree_income.csv",
+            "Doctorate": "Advanced_degree_income.csv",
         }
 
     @lru_cache(maxsize=64)
@@ -377,12 +389,95 @@ class DataService:
             return None
         return float(inflation_rates.mean())
 
-    def load_wage_data(self) -> pd.DataFrame:
+    def load_wage_data(self, education_level: str) -> Optional[pd.DataFrame]:
         """
-        Load wage data by education level (placeholder for future implementation).
+        Load wage data by education level from CSV file.
+
+        Args:
+            education_level: Education level string (e.g., "Bachelor's degree")
 
         Returns:
-            DataFrame with wage data (to be implemented)
+            DataFrame with Year as index and Annual income values, or None if file not found
         """
-        # TODO: Implement when wage data CSV is available
-        raise NotImplementedError("Wage data loading not yet implemented")
+        # Check cache first
+        if education_level in self._income_data:
+            return self._income_data[education_level]
+
+        # Get filename from mapping
+        filename = self.education_income_mapping.get(education_level)
+        if not filename:
+            return None
+
+        try:
+            # Get the project root directory (parent of app/)
+            project_root = Path(__file__).parent.parent.parent
+            income_file = project_root / "data" / "Income" / filename
+
+            if not income_file.exists():
+                return None
+
+            # Read CSV, skipping empty rows
+            df = pd.read_csv(income_file)
+            df = df[df["Year"].notna()]  # Remove rows with missing year
+
+            # Extract Year and Annual columns
+            if "Annual" in df.columns:
+                income_df = df[["Year", "Annual"]].copy()
+                income_df = income_df[income_df["Annual"].notna()]
+                income_df["Year"] = income_df["Year"].astype(int)
+                income_df["Annual"] = income_df["Annual"].astype(float)
+            else:
+                return None
+
+            income_df = income_df.set_index("Year")
+            income_df.columns = ["Income"]
+
+            # Cache the result
+            self._income_data[education_level] = income_df
+            return income_df
+
+        except Exception as e:
+            print(
+                f"Warning: Failed to load income data for {education_level}: {str(e)}"
+            )
+            return None
+
+    def get_income_for_education_level(
+        self, education_level: str, year: Optional[int] = None
+    ) -> Optional[float]:
+        """
+        Get income for a specific education level and optionally a specific year.
+
+        Args:
+            education_level: Education level string
+            year: Optional year to get income for. If None, returns most recent available.
+
+        Returns:
+            Income value, or None if data unavailable
+        """
+        income_df = self.load_wage_data(education_level)
+        if income_df is None or income_df.empty:
+            return None
+
+        if year is not None:
+            if year in income_df.index:
+                return float(income_df.loc[year, "Income"])
+            return None
+        else:
+            # Return most recent available
+            return float(income_df["Income"].iloc[-1])
+
+    def is_crypto_ticker(self, ticker: str) -> bool:
+        """
+        Check if a ticker is a crypto asset.
+
+        Args:
+            ticker: Ticker symbol to check
+
+        Returns:
+            True if ticker is a crypto asset, False otherwise
+        """
+        ticker_upper = ticker.upper()
+        # Check for common crypto ticker patterns
+        crypto_keywords = ["BTC", "ETH", "CRYPTO"]
+        return any(keyword in ticker_upper for keyword in crypto_keywords)

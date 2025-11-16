@@ -32,6 +32,20 @@ class AppConfig:
     # Ticker mappings for historical data
     historical_mappings: Dict[str, str] = None
 
+    # Crypto simulation parameters
+    crypto_max_daily_return: float = 0.50  # 50% cap for normal returns
+    crypto_max_monthly_return: float = 0.20  # 20% cap for normal returns
+    crypto_extreme_event_prob: float = 0.015  # 1.5% chance per period for extreme event
+    crypto_extreme_crash_min: float = -0.80  # minimum -80% crash
+    crypto_extreme_crash_max: float = -0.70  # maximum -70% crash
+    crypto_extreme_rally_min: float = 1.50  # minimum +150% rally
+    crypto_extreme_rally_max: float = 2.00  # maximum +200% rally
+    crypto_crash_prob_ratio: float = (
+        0.65  # 65% of extreme events are crashes, 35% rallies
+    )
+    crypto_volatility_dampening: float = 0.3  # 30% reduction per year beyond data
+    crypto_min_data_years: float = 10.0  # minimum years before dampening
+
     def __post_init__(self):
         """Set default values after initialization."""
         if self.default_tickers is None:

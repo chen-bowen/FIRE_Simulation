@@ -26,6 +26,7 @@ class PortfolioState:
 
     balance: float
     weights: np.ndarray  # target weights, sum to 1
+    asset_values: Optional[np.ndarray] = None  # actual asset values (for rebalancing)
 
 
 @dataclass
@@ -113,6 +114,7 @@ class SimulationResult:
     returns_over_time: Optional[np.ndarray] = (
         None  # Median returns per period (for visualization)
     )
+    rebalancing_events: Optional[List[str]] = None  # List of rebalancing event messages
 
 
 @dataclass

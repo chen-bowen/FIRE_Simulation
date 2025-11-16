@@ -43,10 +43,11 @@ class PortfolioService:
         spend: float,
         inflation_rate_annual: float,
         period_return: np.ndarray,
-        period_index: pd.Timestamp,
+        period_index: Optional[pd.Timestamp],
         prev_index: Optional[pd.Timestamp],
         freq: str,
-    ) -> PortfolioState:
+        period_number: Optional[int] = None,
+    ) -> tuple[PortfolioState, Optional[str]]:
         """
         Step portfolio forward one period.
 
@@ -55,7 +56,7 @@ class PortfolioService:
             contrib: Contribution amount for this period
             spend: Spending amount for this period
             inflation_rate_annual: Annual inflation rate
-            period_return: Asset returns for this period
+            period_return: Asset returns for this period (per-asset returns)
             period_index: Current period timestamp
             prev_index: Previous period timestamp
             freq: Frequency ('daily' or 'monthly')
@@ -65,41 +66,78 @@ class PortfolioService:
         """
         # Apply contribution (pre-retire) or spending (retire) at start of period
         net_flow = contrib - spend
-        new_balance = max(0.0, state.balance + net_flow)
+        balance_before_return = max(0.0, state.balance + net_flow)
 
-        # Apply portfolio return (weighted)
-        # Accept either a vector of per-asset returns (same length as weights)
-        # or a single blended/scalar return. This ensures robustness when
-        # the number of holdings varies (including 1 security) or when a
-        # pre-blended return is provided.
+        # Initialize asset values if not present (first period or after rebalancing)
+        if state.asset_values is None:
+            # Initialize asset values based on target weights
+            state.asset_values = balance_before_return * state.weights
+
+        # Apply asset returns to individual assets
         if isinstance(period_return, np.ndarray):
-            # Squeeze to 1-D if needed
             pr = np.squeeze(period_return)
             if pr.ndim == 0:
-                portfolio_ret = float(pr)
+                # Scalar return - apply to all assets equally
+                asset_returns = np.full(len(state.weights), float(pr))
             elif pr.shape[0] == state.weights.shape[0]:
-                portfolio_ret = float(np.dot(state.weights, pr))
+                # Per-asset returns
+                asset_returns = pr.astype(float)
             elif pr.shape[0] == 1:
-                # Treat as already blended
-                portfolio_ret = float(pr[0])
+                # Single return value - apply to all assets
+                asset_returns = np.full(len(state.weights), float(pr[0]))
             elif state.weights.shape[0] == 1:
-                # Single-asset portfolio but multiple returns provided;
-                # take weighted sum with single weight (which is 1.0 after normalization)
-                portfolio_ret = float(
-                    np.dot(state.weights, pr if pr.ndim == 1 else pr.ravel())
+                # Single asset portfolio
+                asset_returns = np.array(
+                    [float(pr[0] if pr.ndim == 1 else pr.ravel()[0])]
                 )
             else:
-                # Fallback: treat as blended by averaging to avoid shape errors
-                portfolio_ret = float(np.mean(pr))
+                # Fallback: use average return for all assets
+                asset_returns = np.full(len(state.weights), float(np.mean(pr)))
         else:
-            # Plain scalar
-            portfolio_ret = float(period_return)
-        new_balance = max(0.0, new_balance * (1.0 + portfolio_ret))
+            # Plain scalar - apply to all assets
+            asset_returns = np.full(len(state.weights), float(period_return))
 
-        # Note: In this simplified model, we keep target weights
-        # In a more sophisticated model, we would rebalance here
+        # Apply returns to individual asset values
+        new_asset_values = state.asset_values * (1.0 + asset_returns)
+        new_balance = float(np.sum(new_asset_values))
 
-        return PortfolioState(balance=new_balance, weights=state.weights)
+        # Check if annual rebalancing is needed
+        should_rebalance = False
+        if period_index is not None and prev_index is not None:
+            # Historical simulation with dates - rebalance annually
+            should_rebalance = self.annual_rebalance_needed(period_index, prev_index)
+        elif period_number is not None and period_number > 0:
+            # Monte Carlo simulation - rebalance annually based on period number
+            # Rebalance at the END of each year (period ppy-1, 2*ppy-1, etc.)
+            # Skip period 0 to allow initial allocation to drift
+            from app.utils import periods_per_year
+
+            ppy = periods_per_year(freq)
+            # Rebalance at the end of each year (not at the start)
+            should_rebalance = ((period_number + 1) % ppy) == 0
+
+        rebalancing_message = None
+        if should_rebalance:
+            # Rebalance to target weights
+            new_asset_values = new_balance * state.weights
+            # Create rebalancing event message
+            if period_index is not None:
+                rebalancing_message = f"Portfolio rebalanced on {period_index.strftime('%Y-%m-%d')} - Reset all assets to target weights"
+            elif period_number is not None:
+                from app.utils import periods_per_year
+
+                ppy = periods_per_year(freq)
+                year = (period_number + 1) // ppy
+                rebalancing_message = f"Portfolio rebalanced at end of year {year} (period {period_number}) - Reset all assets to target weights"
+
+        return (
+            PortfolioState(
+                balance=new_balance,
+                weights=state.weights,
+                asset_values=new_asset_values,
+            ),
+            rebalancing_message,
+        )
 
     def calculate_period_amounts(
         self, annual_contrib: float, annual_spend: float, freq: str
@@ -122,8 +160,14 @@ class PortfolioService:
         """
         Calculate initial annual spending per category from withdrawal parameters.
 
+        Note: If education_level is set in withdrawal_params, the expense category
+        percentages already reflect education-based adjustments (applied in the UI).
+        These adjustments are maintained throughout retirement via proportional
+        inflation adjustments.
+
         Args:
             withdrawal_params: Withdrawal parameters with expense categories
+                (may include education_level for education-based spending adjustments)
 
         Returns:
             Dictionary mapping category names to annual spending amounts
@@ -139,6 +183,8 @@ class PortfolioService:
                 and withdrawal_params.total_annual_expense
             ):
                 # Percentage of total specified
+                # Note: If education_level is set, these percentages already reflect
+                # education-based adjustments applied in the sidebar
                 category_spending[category.name] = (
                     category.percentage / 100.0
                 ) * withdrawal_params.total_annual_expense
@@ -159,8 +205,13 @@ class PortfolioService:
         """
         Calculate spending per category adjusted for inflation.
 
+        Note: This method maintains education-based spending adjustments throughout
+        retirement by applying inflation proportionally to each category. The relative
+        proportions established by education level (if set) are preserved.
+
         Args:
             initial_category_spending: Initial annual spending per category
+                (may already reflect education-based adjustments)
             years_into_retirement: Number of years into retirement
             inflation_rate_annual: Annual inflation rate to apply (fallback if category rates unavailable)
             freq: Frequency ('daily' or 'monthly')
@@ -179,6 +230,7 @@ class PortfolioService:
                 category_rate = inflation_rate_annual
 
             # Apply cumulative inflation: (1 + r)^t
+            # This maintains the relative proportions established by education adjustments
             inflation_multiplier = (1.0 + category_rate) ** years_into_retirement
             adjusted_spending[category] = amount * inflation_multiplier
 
@@ -196,9 +248,15 @@ class PortfolioService:
         """
         Calculate total dynamic withdrawal amount for a period.
 
+        Note: Education-based spending adjustments (if education_level is set in
+        withdrawal_params) are maintained throughout retirement. The initial_category_spending
+        already reflects education-adjusted category distributions, and inflation adjustments
+        preserve these relative proportions.
+
         Args:
-            withdrawal_params: Withdrawal parameters
+            withdrawal_params: Withdrawal parameters (may include education_level)
             initial_category_spending: Initial annual spending per category
+                (may already reflect education-based adjustments)
             years_into_retirement: Number of years into retirement
             inflation_rate_annual: Annual inflation rate (fallback if category rates unavailable)
             freq: Frequency ('daily' or 'monthly')

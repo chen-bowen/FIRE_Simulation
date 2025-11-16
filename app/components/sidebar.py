@@ -49,6 +49,81 @@ class SidebarComponent:
         },
     }
 
+    # Education-based expense category distributions
+    # Higher education levels tend to spend more on education/healthcare and less on basic needs
+    EDUCATION_EXPENSE_PRESETS = {
+        "Less than high school": {
+            "Food and beverages": 15.0,
+            "Housing": 35.0,
+            "Apparel": 4.0,
+            "Transportation": 18.0,
+            "Medical care": 6.0,
+            "Recreation": 4.0,
+            "Education and communication": 3.0,
+            "Other goods and services": 15.0,
+        },
+        "High school": {
+            "Food and beverages": 14.0,
+            "Housing": 34.0,
+            "Apparel": 3.5,
+            "Transportation": 17.0,
+            "Medical care": 7.0,
+            "Recreation": 4.5,
+            "Education and communication": 4.0,
+            "Other goods and services": 15.0,
+        },
+        "Some college": {
+            "Food and beverages": 13.5,
+            "Housing": 33.5,
+            "Apparel": 3.0,
+            "Transportation": 16.5,
+            "Medical care": 7.5,
+            "Recreation": 5.0,
+            "Education and communication": 5.0,
+            "Other goods and services": 15.0,
+        },
+        "Bachelor's degree": {
+            "Food and beverages": 12.0,
+            "Housing": 32.0,
+            "Apparel": 2.5,
+            "Transportation": 15.0,
+            "Medical care": 9.0,
+            "Recreation": 6.0,
+            "Education and communication": 7.0,
+            "Other goods and services": 16.5,
+        },
+        "Master's degree": {
+            "Food and beverages": 11.0,
+            "Housing": 31.0,
+            "Apparel": 2.0,
+            "Transportation": 14.0,
+            "Medical care": 10.0,
+            "Recreation": 7.0,
+            "Education and communication": 8.0,
+            "Other goods and services": 17.0,
+        },
+        "Professional degree": {
+            "Food and beverages": 10.0,
+            "Housing": 30.0,
+            "Apparel": 2.0,
+            "Transportation": 13.0,
+            "Medical care": 11.0,
+            "Recreation": 8.0,
+            "Education and communication": 9.0,
+            "Other goods and services": 17.0,
+        },
+        "Doctorate": {
+            "Food and beverages": 10.0,
+            "Housing": 30.0,
+            "Apparel": 2.0,
+            "Transportation": 13.0,
+            "Medical care": 11.0,
+            "Recreation": 8.0,
+            "Education and communication": 9.0,
+            "Other goods and services": 17.0,
+        },
+    }
+
     EDUCATION_LEVELS = [
         "Less than high school",
         "High school",
@@ -496,6 +571,10 @@ class SidebarComponent:
                     help="Choose a preset distribution or customize your own",
                 )
 
+                # Track previous education level to detect changes
+                if "previous_education_level" not in st.session_state:
+                    st.session_state.previous_education_level = None
+
                 # Initialize or update category percentages based on preset
                 if "category_percentages" not in st.session_state:
                     if selected_preset in self.EXPENSE_PRESETS:
@@ -570,11 +649,66 @@ class SidebarComponent:
                         help="Your current annual income (optional)",
                     )
 
+                    # Get current education level from session state if available
+                    current_education_index = 0
+                    if "current_education_level" in st.session_state:
+                        current_ed = st.session_state.current_education_level
+                        if current_ed in self.EDUCATION_LEVELS:
+                            current_education_index = (
+                                self.EDUCATION_LEVELS.index(current_ed) + 1
+                            )
+
                     education_level = st.selectbox(
                         "Education level",
                         options=[""] + self.EDUCATION_LEVELS,
-                        index=0,
-                        help="Your education level (optional)",
+                        index=current_education_index,
+                        help="Your education level (optional). Selecting an education level will adjust expense category distributions.",
+                    )
+
+                    # Apply education-based expense preset when education level is selected/changed
+                    if (
+                        education_level
+                        and education_level in self.EDUCATION_EXPENSE_PRESETS
+                    ):
+                        # Check if education level changed
+                        if st.session_state.previous_education_level != education_level:
+                            # Apply education-based preset
+                            st.session_state.category_percentages = (
+                                self.EDUCATION_EXPENSE_PRESETS[education_level].copy()
+                            )
+                            st.session_state.previous_education_level = education_level
+                            # Show info message
+                            st.info(
+                                f"📚 Applied education-based spending adjustments for {education_level}"
+                            )
+                        elif (
+                            st.session_state.previous_education_level is None
+                            and education_level
+                        ):
+                            # First time selecting education level
+                            st.session_state.category_percentages = (
+                                self.EDUCATION_EXPENSE_PRESETS[education_level].copy()
+                            )
+                            st.session_state.previous_education_level = education_level
+                            st.info(
+                                f"📚 Applied education-based spending adjustments for {education_level}"
+                            )
+                    elif (
+                        st.session_state.previous_education_level is not None
+                        and not education_level
+                    ):
+                        # Education level was cleared, revert to previous preset
+                        if st.session_state.previous_preset in self.EXPENSE_PRESETS:
+                            st.session_state.category_percentages = (
+                                self.EXPENSE_PRESETS[
+                                    st.session_state.previous_preset
+                                ].copy()
+                            )
+                        st.session_state.previous_education_level = None
+
+                    # Store current education level in session state
+                    st.session_state.current_education_level = (
+                        education_level if education_level else None
                     )
 
                 # Create expense categories

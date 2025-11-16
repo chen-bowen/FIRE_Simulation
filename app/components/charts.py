@@ -19,6 +19,7 @@ import plotly.graph_objs as go
 import streamlit as st
 
 from app.schemas import SimulationResult
+from app.services.data_service import DataService
 
 
 class ChartComponent:
@@ -30,6 +31,13 @@ class ChartComponent:
     - Comparison charts between simulation methods
     - Adaptive styling based on simulation type (Historical vs Monte Carlo)
     """
+
+    def __init__(self):
+        self.data_service = DataService()
+
+    def _is_crypto_ticker(self, ticker: str) -> bool:
+        """Check if a ticker is a crypto asset."""
+        return self.data_service.is_crypto_ticker(ticker)
 
     def plot_simulation_paths(
         self, result: SimulationResult, title: str, current_age: int = None
@@ -625,27 +633,67 @@ class ChartComponent:
                 initial_amounts[ac] = initial_balance * (weight_pct / 100.0)
 
             # Calculate cumulative returns for each asset up to selected period
+            # Show drifted allocation (ignoring rebalancing) - cumulative from start
             asset_cumulative_returns = {}
+            available_periods = len(returns_df) if returns_df is not None else 0
+
             for ac in asset_classes:
                 if ac in asset_class_mapping:
                     # Get tickers for this asset class
                     tickers = asset_class_mapping[ac]
                     # Find matching tickers in returns_df
-                    matching_tickers = [t for t in tickers if t in returns_df.columns]
+                    matching_tickers = (
+                        [t for t in tickers if t in returns_df.columns]
+                        if returns_df is not None
+                        else []
+                    )
                     if matching_tickers:
                         # Use first matching ticker
                         ticker = matching_tickers[0]
-                        if ticker in returns_df.columns and period_idx < len(
-                            returns_df
-                        ):
-                            # Calculate cumulative return up to period_idx
-                            # Need to handle case where period_idx might exceed available data
-                            max_idx = min(period_idx + 1, len(returns_df))
-                            asset_returns = returns_df[ticker].iloc[:max_idx].values
-                            if len(asset_returns) > 0:
-                                # Calculate cumulative return: product of (1 + returns) - 1
-                                cumulative_return = np.prod(1 + asset_returns) - 1
-                                asset_cumulative_returns[ac] = cumulative_return
+                        if ticker in returns_df.columns:
+                            # Calculate cumulative return from start up to available data
+                            if available_periods > 0:
+                                asset_returns_historical = (
+                                    returns_df[ticker].iloc[:available_periods].values
+                                )
+
+                                if len(asset_returns_historical) > 0:
+                                    # Calculate cumulative return up to available data
+                                    cumulative_return_historical = (
+                                        np.prod(1 + asset_returns_historical) - 1
+                                    )
+
+                                    # If period_idx exceeds available data, continue drift using average return
+                                    if period_idx >= available_periods:
+                                        # Calculate average return per period from historical data
+                                        avg_return_per_period = np.mean(
+                                            asset_returns_historical
+                                        )
+                                        # Calculate additional periods beyond available data
+                                        additional_periods = (
+                                            period_idx - available_periods + 1
+                                        )
+                                        # Continue cumulative return: (1 + historical_cum) * (1 + avg_return)^additional_periods - 1
+                                        cumulative_return = (
+                                            1 + cumulative_return_historical
+                                        ) * (
+                                            (1 + avg_return_per_period)
+                                            ** additional_periods
+                                        ) - 1
+                                    else:
+                                        # Use cumulative return up to period_idx
+                                        asset_returns_up_to_period = (
+                                            returns_df[ticker]
+                                            .iloc[: period_idx + 1]
+                                            .values
+                                        )
+                                        cumulative_return = (
+                                            np.prod(1 + asset_returns_up_to_period) - 1
+                                        )
+
+                                    asset_cumulative_returns[ac] = cumulative_return
+                                else:
+                                    asset_cumulative_returns[ac] = 0.0
                             else:
                                 asset_cumulative_returns[ac] = 0.0
                         else:
@@ -655,21 +703,44 @@ class ChartComponent:
                 else:
                     asset_cumulative_returns[ac] = 0.0
 
-            # Calculate actual dollar amounts (initial * (1 + cumulative return))
-            # Note: This is simplified - doesn't account for contributions/withdrawals per asset
-            # But gives a reasonable approximation of drift without rebalancing
-            total_actual_value = 0.0
-            for ac in asset_classes:
-                initial_amt = initial_amounts.get(ac, 0.0)
-                cum_return = asset_cumulative_returns.get(ac, 0.0)
-                dollar_amounts[ac] = initial_amt * (1 + cum_return)
-                total_actual_value += dollar_amounts[ac]
+            # Calculate actual dollar amounts for non-crypto assets
+            # Crypto gets the residual (total - sum of others) to avoid unrealistic deflation of other assets
+            non_crypto_value = 0.0
+            crypto_asset_class = None
 
-            # Scale to match portfolio value (to account for contributions/withdrawals)
-            if total_actual_value > 0 and portfolio_value > 0:
-                scale_factor = portfolio_value / total_actual_value
-                for ac in asset_classes:
-                    dollar_amounts[ac] *= scale_factor
+            for ac in asset_classes:
+                # Check if this is crypto
+                is_crypto = False
+                if ac == "Crypto":
+                    is_crypto = True
+                    crypto_asset_class = ac
+                elif ac in asset_class_mapping:
+                    tickers = asset_class_mapping[ac]
+                    matching_tickers = (
+                        [t for t in tickers if t in returns_df.columns]
+                        if returns_df is not None
+                        else []
+                    )
+                    if matching_tickers:
+                        ticker = matching_tickers[0]
+                        if self._is_crypto_ticker(ticker):
+                            is_crypto = True
+                            crypto_asset_class = ac
+
+                if not is_crypto:
+                    # Calculate value for non-crypto assets
+                    initial_amt = initial_amounts.get(ac, 0.0)
+                    cum_return = asset_cumulative_returns.get(ac, 0.0)
+                    dollar_amounts[ac] = initial_amt * (1 + cum_return)
+                    non_crypto_value += dollar_amounts[ac]
+                else:
+                    # Will calculate crypto as residual
+                    dollar_amounts[ac] = 0.0
+
+            # Calculate crypto as residual: total portfolio value - sum of non-crypto assets
+            if crypto_asset_class:
+                crypto_value = max(0.0, portfolio_value - non_crypto_value)
+                dollar_amounts[crypto_asset_class] = crypto_value
 
             # Calculate actual percentages
             if portfolio_value > 0:
