@@ -199,11 +199,21 @@ class SidebarComponent:
             value=self.config.default_initial_balance,
             step=10000.0,
         )
-        annual_contrib = st.sidebar.number_input(
-            "Annual savings before retirement ($)",
-            value=self.config.default_annual_contrib,
-            step=1000.0,
-        )
+
+        # Initialize wage-based savings toggle in session state
+        if "use_wage_based_savings" not in st.session_state:
+            st.session_state.use_wage_based_savings = False
+        if "savings_rate" not in st.session_state:
+            st.session_state.savings_rate = 0.15  # Default 15%
+
+        # Initialize wage-based savings variables (will be set later)
+        use_wage_based_savings = False
+        savings_rate = None
+        education_level = ""  # Will be set in dynamic withdrawal section
+
+        # Annual contribution input (conditional on wage-based savings)
+        # This will be set later if wage-based savings is not used
+        annual_contrib = self.config.default_annual_contrib
 
         # Portfolio allocation
         st.sidebar.markdown("---")
@@ -711,6 +721,67 @@ class SidebarComponent:
                         education_level if education_level else None
                     )
 
+                    # Wage-based savings option (only if education level is selected)
+                    if education_level:
+                        st.markdown("---")
+                        st.markdown("**Wage-Based Savings**")
+                        use_wage_based_savings = st.checkbox(
+                            "Use wage-based savings",
+                            value=st.session_state.use_wage_based_savings,
+                            help="Calculate annual savings as a percentage of your wage, which grows over time based on your education level",
+                        )
+                        st.session_state.use_wage_based_savings = use_wage_based_savings
+
+                        if use_wage_based_savings:
+                            savings_rate = (
+                                st.slider(
+                                    "Savings rate (% of income)",
+                                    min_value=5.0,
+                                    max_value=50.0,
+                                    value=st.session_state.savings_rate * 100.0,
+                                    step=1.0,
+                                    help="Percentage of your annual income to save each year",
+                                )
+                                / 100.0
+                            )  # Convert to decimal
+                            st.session_state.savings_rate = savings_rate
+
+                            # Show estimated first year savings if we have wage data
+                            if current_wage > 0:
+                                first_year_savings = current_wage * savings_rate
+                                savings_pct = savings_rate * 100
+                                st.info(
+                                    f"💵 **First year savings:** ${first_year_savings:,.0f}\n\n"
+                                    f"({savings_pct:.0f}% of ${current_wage:,.0f} annual wage)"
+                                )
+                            else:
+                                # Try to estimate from education level
+                                from app.services import DataService
+
+                                data_service = DataService()
+                                if education_level:
+                                    weekly_wage = (
+                                        data_service.get_income_for_education_level(
+                                            education_level
+                                        )
+                                    )
+                                    if weekly_wage:
+                                        annual_wage = data_service.get_annual_wage(
+                                            weekly_wage
+                                        )
+                                        first_year_savings = annual_wage * savings_rate
+                                        savings_pct = savings_rate * 100
+                                        st.info(
+                                            f"💵 **Estimated first year savings:** ${first_year_savings:,.0f}\n\n"
+                                            f"({savings_pct:.0f}% of ${annual_wage:,.0f} estimated annual wage)"
+                                        )
+                        else:
+                            savings_rate = None
+                    else:
+                        # Education level not selected, disable wage-based savings
+                        use_wage_based_savings = False
+                        savings_rate = None
+
                 # Create expense categories
                 expense_categories = [
                     ExpenseCategory(
@@ -741,6 +812,18 @@ class SidebarComponent:
                 value=self.config.default_annual_spend,
                 step=1000.0,
             )
+
+        # Show annual contribution input if NOT using wage-based savings
+        if not use_wage_based_savings:
+            annual_contrib = st.sidebar.number_input(
+                "Annual savings before retirement ($)",
+                value=self.config.default_annual_contrib,
+                step=1000.0,
+                help="Fixed annual contribution amount (ignored if wage-based savings is enabled)",
+            )
+        else:
+            # Set a placeholder value, actual contributions will be calculated from wage
+            annual_contrib = 0.0
 
         # ===== ADVANCED SETTINGS (In Expander) =====
         with st.sidebar.expander("⚙️ Advanced Settings", expanded=False):
@@ -831,6 +914,11 @@ class SidebarComponent:
         ticker_list = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
         weights = np.array([float(x.strip()) for x in weights_input.split(",")])
 
+        # Get current year for wage projections
+        from datetime import datetime
+
+        current_year = datetime.now().year
+
         return {
             "frequency": freq,
             "pacing": pacing,
@@ -848,6 +936,10 @@ class SidebarComponent:
             "inflation": inflation,
             "n_paths": n_paths,
             "seed": seed,
+            "use_wage_based_savings": use_wage_based_savings,
+            "savings_rate": savings_rate,
+            "education_level": education_level if education_level else None,
+            "current_year": current_year,
         }
 
     def _get_tickers_for_assets(

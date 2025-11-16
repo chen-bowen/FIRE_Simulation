@@ -453,7 +453,7 @@ class DataService:
             year: Optional year to get income for. If None, returns most recent available.
 
         Returns:
-            Income value, or None if data unavailable
+            Income value (weekly dollars), or None if data unavailable
         """
         income_df = self.load_wage_data(education_level)
         if income_df is None or income_df.empty:
@@ -466,6 +466,118 @@ class DataService:
         else:
             # Return most recent available
             return float(income_df["Income"].iloc[-1])
+
+    def calculate_wage_growth_rate(self, education_level: str) -> Optional[float]:
+        """
+        Calculate average annual wage growth rate for an education level.
+
+        Args:
+            education_level: Education level string
+
+        Returns:
+            Average annual growth rate (as decimal, e.g., 0.03 for 3%), or None if data unavailable
+        """
+        income_df = self.load_wage_data(education_level)
+        if income_df is None or income_df.empty or len(income_df) < 2:
+            return None
+
+        # Calculate year-over-year growth rates
+        income_values = income_df["Income"].sort_index()
+        growth_rates = income_values.pct_change().dropna()
+
+        if len(growth_rates) == 0:
+            return None
+
+        # Return average annual growth rate
+        return float(growth_rates.mean())
+
+    def project_wage(
+        self, education_level: str, base_year: int, target_year: int
+    ) -> Optional[float]:
+        """
+        Project wage for a future year based on historical growth trends.
+
+        Args:
+            education_level: Education level string
+            base_year: Year to start projection from
+            target_year: Year to project to
+
+        Returns:
+            Projected wage (weekly dollars) for target_year, or None if data unavailable
+        """
+        if target_year < base_year:
+            return None
+
+        # Get base wage
+        base_wage = self.get_income_for_education_level(education_level, base_year)
+        if base_wage is None:
+            return None
+
+        # Get growth rate
+        growth_rate = self.calculate_wage_growth_rate(education_level)
+        if growth_rate is None:
+            return None
+
+        # Project forward: wage * (1 + growth_rate)^years
+        years = target_year - base_year
+        projected_wage = base_wage * ((1.0 + growth_rate) ** years)
+
+        return float(projected_wage)
+
+    def get_wage_for_age(
+        self, education_level: str, current_age: int, current_year: int, target_age: int
+    ) -> Optional[float]:
+        """
+        Get wage for a specific age based on education level and wage growth.
+
+        Args:
+            education_level: Education level string
+            current_age: Current age
+            current_year: Current year
+            target_age: Age to get wage for
+
+        Returns:
+            Wage (weekly dollars) for target_age, or None if data unavailable
+        """
+        if target_age < current_age:
+            return None
+
+        # Calculate target year
+        years_ahead = target_age - current_age
+        target_year = current_year + years_ahead
+
+        # Get current wage
+        current_wage = self.get_income_for_education_level(
+            education_level, current_year
+        )
+        if current_wage is None:
+            # Try to get most recent available wage
+            current_wage = self.get_income_for_education_level(education_level)
+            if current_wage is None:
+                return None
+            # Use most recent year as base
+            income_df = self.load_wage_data(education_level)
+            if income_df is None or income_df.empty:
+                return None
+            base_year = int(income_df.index[-1])
+            target_year = base_year + years_ahead
+        else:
+            base_year = current_year
+
+        # Project wage to target year
+        return self.project_wage(education_level, base_year, target_year)
+
+    def get_annual_wage(self, weekly_wage: float) -> float:
+        """
+        Convert weekly wage to annual wage.
+
+        Args:
+            weekly_wage: Weekly wage in dollars
+
+        Returns:
+            Annual wage (weekly_wage * 52)
+        """
+        return weekly_wage * 52.0
 
     def is_crypto_ticker(self, ticker: str) -> bool:
         """

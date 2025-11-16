@@ -89,6 +89,11 @@ class SimulationParams:
     withdrawal_params: Optional[WithdrawalParams] = (
         None  # New dynamic withdrawal params
     )
+    use_wage_based_savings: bool = False  # Use wage growth for contributions
+    savings_rate: Optional[float] = None  # Percentage of wage to save (0.0-1.0)
+    education_level: Optional[str] = None  # Education level for wage growth
+    current_age: Optional[int] = None  # Current age for wage projections
+    current_year: Optional[int] = None  # Current year for wage projections
 
 
 @dataclass

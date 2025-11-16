@@ -147,6 +147,59 @@ class PortfolioService:
         spend_pp = per_period_amount(annual_spend, freq)
         return contrib_pp, spend_pp
 
+    def calculate_wage_based_contribution(
+        self,
+        education_level: str,
+        current_age: int,
+        current_year: int,
+        years_into_accumulation: float,
+        savings_rate: float,
+        freq: str,
+        data_service,
+    ) -> float:
+        """
+        Calculate contribution for a period based on wage growth.
+
+        Args:
+            education_level: Education level string
+            current_age: Current age
+            current_year: Current year
+            years_into_accumulation: Years into accumulation phase
+            savings_rate: Savings rate as decimal (e.g., 0.15 for 15%)
+            freq: Frequency ('daily' or 'monthly')
+            data_service: DataService instance for wage data
+
+        Returns:
+            Per-period contribution amount
+        """
+        # Calculate target age for this period
+        target_age = current_age + years_into_accumulation
+
+        # Get wage for this age
+        weekly_wage = data_service.get_wage_for_age(
+            education_level, current_age, current_year, int(target_age)
+        )
+        if weekly_wage is None:
+            # Fallback: use most recent wage and project forward
+            weekly_wage = data_service.get_income_for_education_level(education_level)
+            if weekly_wage is None:
+                return 0.0
+            # Project using growth rate
+            growth_rate = data_service.calculate_wage_growth_rate(education_level)
+            if growth_rate:
+                weekly_wage = weekly_wage * (
+                    (1.0 + growth_rate) ** years_into_accumulation
+                )
+
+        # Convert to annual wage
+        annual_wage = data_service.get_annual_wage(weekly_wage)
+
+        # Calculate annual contribution
+        annual_contrib = annual_wage * savings_rate
+
+        # Convert to per-period amount
+        return per_period_amount(annual_contrib, freq)
+
     def calculate_inflation_factor(
         self, inflation_rate_annual: float, freq: str
     ) -> float:
@@ -155,7 +208,7 @@ class PortfolioService:
         return (1.0 + inflation_rate_annual) ** (1.0 / ppy) - 1.0
 
     def calculate_initial_category_spending(
-        self, withdrawal_params: WithdrawalParams
+        self, withdrawal_params: WithdrawalParams, data_service=None
     ) -> Dict[str, float]:
         """
         Calculate initial annual spending per category from withdrawal parameters.
@@ -165,29 +218,38 @@ class PortfolioService:
         These adjustments are maintained throughout retirement via proportional
         inflation adjustments.
 
+        If education_level and wage data are available, retirement spending can be
+        projected based on wage growth trends (final wage before retirement).
+
         Args:
             withdrawal_params: Withdrawal parameters with expense categories
                 (may include education_level for education-based spending adjustments)
+            data_service: Optional DataService instance for wage-based projections
 
         Returns:
             Dictionary mapping category names to annual spending amounts
         """
         category_spending = {}
 
+        # If wage data available, consider projecting retirement spending from final wage
+        # For now, use the provided total_annual_expense or calculate from percentages
+        total_expense = withdrawal_params.total_annual_expense
+
+        # Future enhancement: If education_level and data_service provided,
+        # could project retirement spending based on final wage before retirement
+        # and typical spending-to-wage ratios for that education level
+
         for category in withdrawal_params.expense_categories:
             if category.current_amount is not None:
                 # Direct dollar amount specified
                 category_spending[category.name] = category.current_amount
-            elif (
-                category.percentage is not None
-                and withdrawal_params.total_annual_expense
-            ):
+            elif category.percentage is not None and total_expense:
                 # Percentage of total specified
                 # Note: If education_level is set, these percentages already reflect
                 # education-based adjustments applied in the sidebar
                 category_spending[category.name] = (
                     category.percentage / 100.0
-                ) * withdrawal_params.total_annual_expense
+                ) * total_expense
             else:
                 # Should not happen due to validation, but handle gracefully
                 category_spending[category.name] = 0.0

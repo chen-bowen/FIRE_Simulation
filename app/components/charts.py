@@ -18,7 +18,7 @@ import pandas as pd
 import plotly.graph_objs as go
 import streamlit as st
 
-from app.schemas import SimulationResult
+from app.schemas import SimulationParams, SimulationResult
 from app.services.data_service import DataService
 
 
@@ -972,3 +972,252 @@ class ChartComponent:
             fig.update_xaxes(tickmode="linear", dtick=dtick)
 
         st.plotly_chart(fig, use_container_width=True)
+
+    def plot_savings_and_returns_breakdown(
+        self,
+        params: SimulationParams,
+        result: SimulationResult,
+        current_age: int,
+        current_year: int,
+    ) -> None:
+        """
+        Plot savings contributions vs portfolio growth, showing investment returns.
+
+        Args:
+            params: Simulation parameters (must have wage-based savings enabled)
+            result: Simulation result data
+            current_age: Current age
+            current_year: Current year
+        """
+        if not params.use_wage_based_savings or not params.education_level:
+            return
+
+        ppy = result.periods_per_year
+        pre_retire_periods = int(params.pre_retire_years * ppy)
+
+        # Calculate data for accumulation phase only
+        years = []
+        annual_contributions = []
+        cumulative_contributions = []
+        portfolio_balances = []
+        cumulative_investment_returns = []  # Cumulative investment returns
+        annual_investment_returns = []  # Annual investment return amount
+
+        cumulative_contrib = params.initial_balance  # Start with initial balance
+        prev_portfolio_balance = params.initial_balance
+
+        # Add initial data point
+        years.append(current_year)
+        annual_contributions.append(0.0)  # No contribution yet
+        cumulative_contributions.append(params.initial_balance)
+        portfolio_balances.append(params.initial_balance)
+        cumulative_investment_returns.append(0.0)
+        annual_investment_returns.append(0.0)
+
+        for i in range(min(pre_retire_periods, len(result.median_path))):
+            years_into_accumulation = i / ppy
+            year = current_year + int(years_into_accumulation)
+
+            # Only add data points once per year (at the end of each year)
+            if i % ppy == 0 and i > 0:  # End of a year (skip i=0 as it's already added)
+                # Get wage for this age (use the year we're ending)
+                age = current_age + int(years_into_accumulation)
+                weekly_wage = self.data_service.get_wage_for_age(
+                    params.education_level, current_age, current_year, age
+                )
+                if weekly_wage is None:
+                    weekly_wage = self.data_service.get_income_for_education_level(
+                        params.education_level
+                    )
+                    if weekly_wage is None:
+                        continue
+                    growth_rate = self.data_service.calculate_wage_growth_rate(
+                        params.education_level
+                    )
+                    if growth_rate:
+                        weekly_wage = weekly_wage * (
+                            (1.0 + growth_rate) ** years_into_accumulation
+                        )
+
+                annual_wage = self.data_service.get_annual_wage(weekly_wage)
+                annual_contrib = annual_wage * params.savings_rate
+
+                # Get portfolio balance at END of this year
+                portfolio_balance = result.median_path[i]
+
+                # Calculate annual investment return:
+                # Portfolio grew from prev_portfolio_balance to portfolio_balance
+                # During this year, we contributed annual_contrib
+                # So: return = portfolio_balance - prev_portfolio_balance - annual_contrib
+                annual_return = (
+                    portfolio_balance - prev_portfolio_balance - annual_contrib
+                )
+
+                # Add this year's contribution to cumulative
+                cumulative_contrib += annual_contrib
+
+                # Cumulative investment return = portfolio balance - cumulative contributions
+                cumulative_return = portfolio_balance - cumulative_contrib
+
+                years.append(year)
+                annual_contributions.append(annual_contrib)
+                cumulative_contributions.append(cumulative_contrib)
+                portfolio_balances.append(portfolio_balance)
+                cumulative_investment_returns.append(cumulative_return)
+                annual_investment_returns.append(annual_return)
+
+                prev_portfolio_balance = portfolio_balance
+
+        if not years or len(years) < 2:
+            st.warning(
+                "Insufficient data to display savings and returns chart. Please ensure wage-based savings is enabled and you have at least one year of accumulation."
+            )
+            return
+
+        # Create figure with single y-axis
+        fig = go.Figure()
+
+        # Portfolio balance line
+        fig.add_trace(
+            go.Scatter(
+                x=years,
+                y=portfolio_balances,
+                name="Portfolio Balance",
+                line=dict(color="#e74c3c", width=3),
+                hovertemplate="Year: %{x}<br>Portfolio: $%{y:,.0f}<extra></extra>",
+            )
+        )
+
+        # Cumulative contributions line
+        fig.add_trace(
+            go.Scatter(
+                x=years,
+                y=cumulative_contributions,
+                name="Cumulative Contributions",
+                line=dict(color="#31a354", width=2, dash="dash"),
+                hovertemplate="Year: %{x}<br>Contributions: $%{y:,.0f}<extra></extra>",
+                fill=None,
+            )
+        )
+
+        # Investment returns (filled area between contributions and portfolio)
+        fig.add_trace(
+            go.Scatter(
+                x=years,
+                y=portfolio_balances,
+                name="Cumulative Investment Returns",
+                fill="tonexty",
+                fillcolor="rgba(52, 152, 219, 0.3)",
+                line=dict(color="rgba(52, 152, 219, 0.0)", width=0),
+                hovertemplate="Year: %{x}<br>Cumulative Returns: $%{customdata:,.0f}<extra></extra>",
+                customdata=cumulative_investment_returns,
+                showlegend=True,
+            )
+        )
+
+        # Show annual contributions and returns as grouped bars (not stacked, to compare them)
+        # Use a secondary y-axis for annual values since they're much smaller than cumulative
+        fig.add_trace(
+            go.Bar(
+                x=years,
+                y=annual_contributions,
+                name="Annual Contribution",
+                marker_color="#2ecc71",
+                opacity=0.7,
+                yaxis="y2",
+                hovertemplate="Year: %{x}<br>Contribution: $%{y:,.0f}<extra></extra>",
+            )
+        )
+
+        # Annual investment returns
+        fig.add_trace(
+            go.Bar(
+                x=years,
+                y=annual_investment_returns,
+                name="Annual Investment Return",
+                marker_color="#3498db",
+                opacity=0.7,
+                yaxis="y2",
+                hovertemplate="Year: %{x}<br>Return: $%{y:,.0f}<extra></extra>",
+            )
+        )
+
+        # Add retirement transition marker
+        retire_year = current_year + params.pre_retire_years
+        if retire_year <= years[-1]:
+            fig.add_vline(
+                x=retire_year,
+                line_dash="dot",
+                line_color="red",
+                annotation_text="Retirement",
+                annotation_position="top",
+            )
+
+        # Update layout with dual y-axes (needed because cumulative values are much larger than annual)
+        fig.update_layout(
+            title="Savings Contributions & Investment Returns (Accumulation Phase Only)",
+            xaxis_title="Year",
+            yaxis=dict(
+                title="Portfolio Balance & Cumulative Contributions ($)",
+                side="left",
+                tickformat="$,.0f",
+            ),
+            yaxis2=dict(
+                title="Annual Contribution & Return ($)",
+                side="right",
+                overlaying="y",
+                tickformat="$,.0f",
+            ),
+            hovermode="x unified",
+            showlegend=True,
+            legend=dict(x=0.02, y=0.98),
+            height=500,
+            barmode="group",  # Group bars to compare contributions vs returns
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Add explanation
+        st.markdown("---")
+        st.markdown("### 💡 Understanding This Chart")
+
+        # Calculate terminal wealth for display
+        terminal_wealth_m = np.median(result.terminal_balances) / 1e6
+
+        # Determine simulation type
+        if result.data_limited:
+            simulation_type = (
+                "Monte Carlo simulation (statistical modeling based on historical data)"
+            )
+            if result.available_years:
+                simulation_type += f" - {result.available_years:.1f} years of historical data available"
+        else:
+            simulation_type = (
+                "Historical simulation (rolling windows of actual market data)"
+            )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(
+                f"""
+            **Portfolio Balance** (red line): Your portfolio value during accumulation phase (up to retirement)
+
+            **Cumulative Contributions** (green dashed): Total amount you've saved over time (wage × savings rate)
+
+            **Cumulative Investment Returns** (blue area): Total investment gains = Portfolio Balance - Cumulative Contributions
+
+            **Returns Source:** {simulation_type}
+
+            **Note:** This chart shows accumulation only. Terminal wealth (${terminal_wealth_m:.2f}M) is the balance at the end of the full simulation (after retirement).
+            """
+            )
+        with col2:
+            st.markdown(
+                """
+            **Annual Contribution** (green bars): How much you save each year based on your wage and savings rate
+
+            **Annual Investment Return** (blue bars): Investment gains/losses for that year
+
+            As your portfolio grows, annual returns typically exceed annual contributions due to compounding.
+            """
+            )

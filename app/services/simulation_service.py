@@ -24,7 +24,7 @@ from app.schemas import (
     SimulationParams,
     SimulationResult,
 )
-from app.utils import periods_per_year
+from app.utils import per_period_amount, periods_per_year
 
 from .data_service import DataService
 from .portfolio_service import PortfolioService
@@ -251,7 +251,7 @@ class SimulationService:
             if use_dynamic_withdrawal:
                 initial_category_spending = (
                     self.portfolio_service.calculate_initial_category_spending(
-                        params.withdrawal_params
+                        params.withdrawal_params, self.data_service
                     )
                 )
                 # Try to load CPI inflation rates; fall back to annual inflation rate
@@ -282,11 +282,55 @@ class SimulationService:
                 else params.annual_spend
             )
 
-            contrib_pp, spend_pp_nominal_year1 = (
-                self.portfolio_service.calculate_period_amounts(
-                    params.annual_contrib, total_annual_spend, params.frequency
-                )
+            # Calculate period amounts (contributions may be wage-based)
+            use_wage_based = (
+                params.use_wage_based_savings
+                and params.education_level
+                and params.savings_rate is not None
+                and params.current_age is not None
+                and params.current_year is not None
             )
+
+            if use_wage_based:
+                # Pre-calculate annual wages for each year during accumulation (cache for performance)
+                # This avoids recalculating wages for every period (hundreds/thousands of times)
+                annual_wages_by_year = {}
+                for year_offset in range(params.pre_retire_years + 1):
+                    target_year = params.current_year + year_offset
+                    target_age = params.current_age + year_offset
+                    weekly_wage = self.data_service.get_wage_for_age(
+                        params.education_level,
+                        params.current_age,
+                        params.current_year,
+                        target_age,
+                    )
+                    if weekly_wage is None:
+                        # Fallback projection
+                        weekly_wage = self.data_service.get_income_for_education_level(
+                            params.education_level
+                        )
+                        if weekly_wage is None:
+                            break
+                        growth_rate = self.data_service.calculate_wage_growth_rate(
+                            params.education_level
+                        )
+                        if growth_rate:
+                            weekly_wage = weekly_wage * (
+                                (1.0 + growth_rate) ** year_offset
+                            )
+                    annual_wages_by_year[target_year] = (
+                        self.data_service.get_annual_wage(weekly_wage)
+                    )
+                contrib_pp = None  # Will be calculated dynamically using cached wages
+            else:
+                contrib_pp, _ = self.portfolio_service.calculate_period_amounts(
+                    params.annual_contrib, 0.0, params.frequency
+                )
+
+            spend_pp_nominal_year1 = self.portfolio_service.calculate_period_amounts(
+                0.0, total_annual_spend, params.frequency
+            )[1]
+
             inflation_pp = self.portfolio_service.calculate_inflation_factor(
                 params.inflation_rate_annual, params.frequency
             )
@@ -413,7 +457,24 @@ class SimulationService:
 
                     # compute contribution and spending for this period
                     if in_accumulation:
-                        contrib = contrib_pp
+                        if use_wage_based:
+                            # Use cached annual wage for this year
+                            years_into_accumulation = i / ppy
+                            year = params.current_year + int(years_into_accumulation)
+                            annual_wage = annual_wages_by_year.get(year)
+                            if annual_wage is None:
+                                # Fallback to most recent available wage
+                                annual_wage = (
+                                    list(annual_wages_by_year.values())[-1]
+                                    if annual_wages_by_year
+                                    else 0.0
+                                )
+                            annual_contrib = annual_wage * params.savings_rate
+                            contrib = per_period_amount(
+                                annual_contrib, params.frequency
+                            )
+                        else:
+                            contrib = contrib_pp
                         spend = 0.0
                     else:
                         # dynamic vs fixed spending
@@ -569,7 +630,7 @@ class SimulationService:
             if use_dynamic_withdrawal:
                 initial_category_spending = (
                     self.portfolio_service.calculate_initial_category_spending(
-                        params.withdrawal_params
+                        params.withdrawal_params, self.data_service
                     )
                 )
 
@@ -599,11 +660,53 @@ class SimulationService:
                 else params.annual_spend
             )
 
-            contrib_pp, spend_pp_nominal_year1 = (
-                self.portfolio_service.calculate_period_amounts(
-                    params.annual_contrib, total_annual_spend, params.frequency
-                )
+            # Calculate period amounts (contributions may be wage-based)
+            use_wage_based = (
+                params.use_wage_based_savings
+                and params.education_level
+                and params.savings_rate is not None
+                and params.current_age is not None
+                and params.current_year is not None
             )
+
+            if use_wage_based:
+                # Pre-calculate annual wages for each year during accumulation (cache for performance)
+                annual_wages_by_year = {}
+                for year_offset in range(params.pre_retire_years + 1):
+                    target_year = params.current_year + year_offset
+                    target_age = params.current_age + year_offset
+                    weekly_wage = self.data_service.get_wage_for_age(
+                        params.education_level,
+                        params.current_age,
+                        params.current_year,
+                        target_age,
+                    )
+                    if weekly_wage is None:
+                        weekly_wage = self.data_service.get_income_for_education_level(
+                            params.education_level
+                        )
+                        if weekly_wage is None:
+                            break
+                        growth_rate = self.data_service.calculate_wage_growth_rate(
+                            params.education_level
+                        )
+                        if growth_rate:
+                            weekly_wage = weekly_wage * (
+                                (1.0 + growth_rate) ** year_offset
+                            )
+                    annual_wages_by_year[target_year] = (
+                        self.data_service.get_annual_wage(weekly_wage)
+                    )
+                contrib_pp = None  # Will be calculated dynamically using cached wages
+            else:
+                contrib_pp, _ = self.portfolio_service.calculate_period_amounts(
+                    params.annual_contrib, 0.0, params.frequency
+                )
+
+            spend_pp_nominal_year1 = self.portfolio_service.calculate_period_amounts(
+                0.0, total_annual_spend, params.frequency
+            )[1]
+
             avg_inflation_rate = params.inflation_rate_annual
             try:
                 avg_inflation_rate = self.data_service.get_average_inflation_rate()
@@ -660,7 +763,24 @@ class SimulationService:
                     in_accumulation = i < int(params.pre_retire_years * ppy)
 
                     if in_accumulation:
-                        contrib = contrib_pp
+                        if use_wage_based:
+                            # Use cached annual wage for this year
+                            years_into_accumulation = i / ppy
+                            year = params.current_year + int(years_into_accumulation)
+                            annual_wage = annual_wages_by_year.get(year)
+                            if annual_wage is None:
+                                # Fallback to most recent available wage
+                                annual_wage = (
+                                    list(annual_wages_by_year.values())[-1]
+                                    if annual_wages_by_year
+                                    else 0.0
+                                )
+                            annual_contrib = annual_wage * params.savings_rate
+                            contrib = per_period_amount(
+                                annual_contrib, params.frequency
+                            )
+                        else:
+                            contrib = contrib_pp
                         spend = 0.0
                     else:
                         if use_dynamic_withdrawal:
@@ -830,7 +950,7 @@ class SimulationService:
             if use_dynamic_withdrawal:
                 initial_category_spending = (
                     self.portfolio_service.calculate_initial_category_spending(
-                        params.withdrawal_params
+                        params.withdrawal_params, self.data_service
                     )
                 )
 
@@ -860,11 +980,52 @@ class SimulationService:
                 else params.annual_spend
             )
 
-            contrib_pp, spend_pp_nominal_year1 = (
-                self.portfolio_service.calculate_period_amounts(
-                    params.annual_contrib, total_annual_spend, params.frequency
-                )
+            # Calculate period amounts (contributions may be wage-based)
+            use_wage_based = (
+                params.use_wage_based_savings
+                and params.education_level
+                and params.savings_rate is not None
+                and params.current_age is not None
+                and params.current_year is not None
             )
+
+            if use_wage_based:
+                # Pre-calculate annual wages for each year during accumulation (cache for performance)
+                annual_wages_by_year = {}
+                for year_offset in range(params.pre_retire_years + 1):
+                    target_year = params.current_year + year_offset
+                    target_age = params.current_age + year_offset
+                    weekly_wage = self.data_service.get_wage_for_age(
+                        params.education_level,
+                        params.current_age,
+                        params.current_year,
+                        target_age,
+                    )
+                    if weekly_wage is None:
+                        weekly_wage = self.data_service.get_income_for_education_level(
+                            params.education_level
+                        )
+                        if weekly_wage is None:
+                            break
+                        growth_rate = self.data_service.calculate_wage_growth_rate(
+                            params.education_level
+                        )
+                        if growth_rate:
+                            weekly_wage = weekly_wage * (
+                                (1.0 + growth_rate) ** year_offset
+                            )
+                    annual_wages_by_year[target_year] = (
+                        self.data_service.get_annual_wage(weekly_wage)
+                    )
+                contrib_pp = None  # Will be calculated dynamically using cached wages
+            else:
+                contrib_pp, _ = self.portfolio_service.calculate_period_amounts(
+                    params.annual_contrib, 0.0, params.frequency
+                )
+
+            spend_pp_nominal_year1 = self.portfolio_service.calculate_period_amounts(
+                0.0, total_annual_spend, params.frequency
+            )[1]
 
             avg_inflation_rate = params.inflation_rate_annual
             try:
@@ -926,7 +1087,24 @@ class SimulationService:
                 for i in range(total_periods):
                     in_accumulation = i < pre_retire_periods
                     if in_accumulation:
-                        contrib = contrib_pp
+                        if use_wage_based:
+                            # Use cached annual wage for this year
+                            years_into_accumulation = i / ppy
+                            year = params.current_year + int(years_into_accumulation)
+                            annual_wage = annual_wages_by_year.get(year)
+                            if annual_wage is None:
+                                # Fallback to most recent available wage
+                                annual_wage = (
+                                    list(annual_wages_by_year.values())[-1]
+                                    if annual_wages_by_year
+                                    else 0.0
+                                )
+                            annual_contrib = annual_wage * params.savings_rate
+                            contrib = per_period_amount(
+                                annual_contrib, params.frequency
+                            )
+                        else:
+                            contrib = contrib_pp
                         spend = 0.0
                     else:
                         contrib = 0.0

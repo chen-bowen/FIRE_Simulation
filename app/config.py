@@ -27,7 +27,7 @@ class AppConfig:
     default_plan_until_age: int = 95
     default_initial_balance: float = 200000.0
     default_annual_contrib: float = 10000.0
-    default_annual_spend: float = 40000.0
+    default_annual_spend: float = 75000.0
 
     # Ticker mappings for historical data
     historical_mappings: Dict[str, str] = None

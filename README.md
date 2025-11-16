@@ -55,20 +55,132 @@ data/
 
 ## Setup
 
+### Prerequisites
+
+- Python 3.8 or higher
+- pip (Python package manager)
+
+### Installation
+
 ```bash
-# Create virtual environment
+# Create virtual environment (recommended)
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Verify installation
+pip list
+```
+
+### Verify All Packages Are Installed
+
+```bash
+# Check that all required packages are installed
+pip check
+
+# Or verify specific packages
+python -c "import streamlit, yfinance, numpy, pandas, plotly; print('All packages installed successfully!')"
 ```
 
 ## Run
 
+### Local Development
+
 ```bash
+# Option 1: Using run.py (recommended)
+python run.py
+
+# Option 2: Direct Streamlit command
+PYTHONPATH="." streamlit run app/main.py
+
+# Option 3: With debug logging
 PYTHONPATH="." streamlit run app/main.py --logger.level=debug
 ```
+
+The app will be available at `http://localhost:8501`
+
+## Deployment
+
+### Streamlit Cloud (Recommended)
+
+1. **Push your code to GitHub**
+   ```bash
+   git add .
+   git commit -m "Prepare for deployment"
+   git push origin main
+   ```
+
+2. **Deploy on Streamlit Cloud**
+   - Go to [share.streamlit.io](https://share.streamlit.io)
+   - Sign in with GitHub
+   - Click "New app"
+   - Select your repository
+   - Set the main file path: `app/main.py`
+   - Click "Deploy"
+
+3. **Important Notes for Streamlit Cloud**
+   - Ensure `requirements.txt` is in the root directory (✓ already present)
+   - The app will automatically install dependencies from `requirements.txt`
+   - Data files in `data/` directory will be included automatically
+   - No additional configuration needed
+
+### Other Deployment Options
+
+#### Docker Deployment
+
+Create a `Dockerfile`:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Expose Streamlit port
+EXPOSE 8501
+
+# Run the app
+CMD ["streamlit", "run", "app/main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+```
+
+Build and run:
+```bash
+docker build -t retirement-planner .
+docker run -p 8501:8501 retirement-planner
+```
+
+#### Traditional Server Deployment
+
+1. **Install dependencies on server**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Run with process manager (e.g., systemd, supervisor)**
+   ```bash
+   streamlit run app/main.py --server.port=8501 --server.address=0.0.0.0
+   ```
+
+3. **Use reverse proxy (nginx) for production**
+   - Configure nginx to proxy requests to `localhost:8501`
+   - Enable SSL/TLS certificates
+
+### Deployment Checklist
+
+- [x] All dependencies listed in `requirements.txt`
+- [x] Data files present in `data/` directory
+- [x] Application entry point (`app/main.py`) is accessible
+- [ ] Environment variables configured (if needed)
+- [ ] Port 8501 is accessible (or configured port)
+- [ ] Internet access for Yahoo Finance API calls
 
 ## Configuration
 
