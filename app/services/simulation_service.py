@@ -473,6 +473,7 @@ class SimulationService:
                 returns_over_time.append(returns)
                 terminal_balances.append(state.balance)
                 # Success = balance stayed positive throughout retirement (not just at end)
+                # A balance of 0 or negative means the portfolio ran out of money
                 if adjusted_pre_retire_periods < actual_periods:
                     retirement_balances = balances[adjusted_pre_retire_periods:]
                     path_success = np.all(retirement_balances > 0) and state.balance > 0
@@ -730,6 +731,7 @@ class SimulationService:
             median_spending = np.median(all_spending, axis=0)
             median_returns = np.median(all_returns, axis=0)
             # Success = balance stayed positive throughout retirement (not just at end)
+            # A balance of 0 or negative means the portfolio ran out of money
             retire_start_period = int(params.pre_retire_years * ppy)
             if retire_start_period < total_periods:
                 retirement_balances = all_paths[:, retire_start_period:]
@@ -1004,6 +1006,7 @@ class SimulationService:
                 returns_over_time.append(returns)
                 terminal_balances.append(state.balance)
                 # Success = balance stayed positive throughout retirement (not just at end)
+                # A balance of 0 or negative means the portfolio ran out of money
                 retire_start_period = pre_retire_periods
                 if retire_start_period < total_periods:
                     retirement_balances = balances[retire_start_period:]

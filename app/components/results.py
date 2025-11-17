@@ -30,12 +30,14 @@ class ResultsComponent:
         with col2:
             median_terminal = np.median(result.terminal_balances)
             # Format in millions for better readability
-            if median_terminal >= 1e6:
-                wealth_display = f"${median_terminal/1e6:.2f}M"
-            elif median_terminal >= 1e3:
-                wealth_display = f"${median_terminal/1e3:.1f}K"
+            abs_terminal = abs(median_terminal)
+            sign = "-" if median_terminal < 0 else ""
+            if abs_terminal >= 1e6:
+                wealth_display = f"{sign}${abs_terminal/1e6:.2f}M"
+            elif abs_terminal >= 1e3:
+                wealth_display = f"{sign}${abs_terminal/1e3:.1f}K"
             else:
-                wealth_display = f"${median_terminal:.0f}"
+                wealth_display = f"{sign}${abs_terminal:.0f}"
             st.metric(
                 "Median Terminal Wealth",
                 wealth_display,

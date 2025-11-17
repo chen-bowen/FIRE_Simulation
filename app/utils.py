@@ -88,12 +88,15 @@ def align_weights_with_data(weights: np.ndarray, data_columns: List[str]) -> np.
 
 def format_currency(amount: float) -> str:
     """Format currency amount for display."""
-    if amount >= 1e6:
-        return f"${amount/1e6:.1f}M"
-    elif amount >= 1e3:
-        return f"${amount/1e3:.1f}K"
+    abs_amount = abs(amount)
+    sign = "-" if amount < 0 else ""
+    
+    if abs_amount >= 1e6:
+        return f"{sign}${abs_amount/1e6:.1f}M"
+    elif abs_amount >= 1e3:
+        return f"{sign}${abs_amount/1e3:.1f}K"
     else:
-        return f"${amount:.0f}"
+        return f"{sign}${abs_amount:.0f}"
 
 
 def format_percentage(value: float, decimals: int = 1) -> str:

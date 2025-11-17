@@ -66,12 +66,22 @@ class PortfolioService:
         """
         # Apply contribution (pre-retire) or spending (retire) at start of period
         net_flow = contrib - spend
-        balance_before_return = max(0.0, state.balance + net_flow)
-
-        # Initialize asset values if not present (first period or after rebalancing)
+        
+        # Initialize or update asset values to reflect net flow
         if state.asset_values is None:
-            # Initialize asset values based on target weights
+            # First period: initialize asset values based on target weights
+            balance_before_return = state.balance + net_flow
             state.asset_values = balance_before_return * state.weights
+        else:
+            # Apply net flow proportionally to existing asset values
+            if state.balance != 0:
+                # Proportional adjustment when balance is non-zero
+                flow_ratio = net_flow / state.balance
+                state.asset_values = state.asset_values * (1.0 + flow_ratio)
+            elif net_flow != 0:
+                # When balance is zero but there's a flow, allocate based on weights
+                state.asset_values = net_flow * state.weights
+            # If balance is 0 and net_flow is 0, keep asset_values as is
 
         # Apply asset returns to individual assets
         if isinstance(period_return, np.ndarray):
