@@ -603,7 +603,7 @@ class ChartComponent:
             phase = "Unknown"
             phase_color = "gray"
 
-        # Calculate dollar amounts per asset class based on actual performance (no rebalancing)
+        # Calculate dollar amounts per asset class accounting for annual rebalancing
         asset_classes = list(portfolio_weights.keys())
         weights_array = np.array([portfolio_weights[ac] for ac in asset_classes])
         # Normalize weights to sum to 100%
@@ -613,15 +613,40 @@ class ChartComponent:
         actual_percentages = {}
 
         if returns_df is not None and initial_balance is not None and asset_class_mapping is not None:
-            # Calculate actual asset balances based on individual asset returns (no rebalancing)
-            # Get initial dollar amounts per asset class
-            initial_amounts = {}
-            for ac, weight_pct in zip(asset_classes, weights_array):
-                initial_amounts[ac] = initial_balance * (weight_pct / 100.0)
+            # Find the last rebalancing point
+            # Rebalancing happens at the END of each year, so:
+            # - For year N, rebalancing happens at period (N * ppy - 1) or start of year N+1
+            # - We want to show allocation at the selected year, accounting for drift since last rebalance
+            ppy = result.periods_per_year
 
-            # Calculate cumulative returns for each asset up to selected period
-            # Show drifted allocation (ignoring rebalancing) - cumulative from start
-            asset_cumulative_returns = {}
+            # Calculate which year period_idx falls into
+            # period_idx = (selected_year - 1) * ppy is at the START of selected_year
+            # Rebalancing happens at the END of each year, so last rebalance was at end of (selected_year - 1)
+            # For year 1, there's no previous rebalance, so use initial allocation
+            if selected_year == 1:
+                # Year 1: use initial balance and calculate from start
+                rebalance_period = 0
+                rebalanced_portfolio_value = initial_balance
+            else:
+                # Last rebalancing was at the end of previous year (start of current year)
+                rebalance_period = (selected_year - 1) * ppy
+                if rebalance_period > 0 and rebalance_period < len(result.median_path):
+                    rebalanced_portfolio_value = result.median_path[rebalance_period]
+                else:
+                    # Fallback: estimate from initial balance
+                    rebalanced_portfolio_value = initial_balance
+
+            # Calculate how many periods since last rebalancing
+            periods_since_rebalance = period_idx - rebalance_period + 1
+            periods_since_rebalance = max(1, min(periods_since_rebalance, ppy))  # Clamp to current year
+
+            # Calculate dollar amounts at last rebalancing (target allocation)
+            rebalanced_amounts = {}
+            for ac, weight_pct in zip(asset_classes, weights_array):
+                rebalanced_amounts[ac] = rebalanced_portfolio_value * (weight_pct / 100.0)
+
+            # Calculate returns since last rebalancing for each asset class
+            asset_returns_since_rebalance = {}
             available_periods = len(returns_df) if returns_df is not None else 0
 
             for ac in asset_classes:
@@ -634,42 +659,38 @@ class ChartComponent:
                         # Use first matching ticker
                         ticker = matching_tickers[0]
                         if ticker in returns_df.columns:
-                            # Calculate cumulative return from start up to available data
-                            if available_periods > 0:
-                                asset_returns_historical = returns_df[ticker].iloc[:available_periods].values
+                            # Calculate returns from last rebalancing point to selected period
+                            start_period = rebalance_period
+                            end_period = min(period_idx + 1, available_periods)
 
-                                if len(asset_returns_historical) > 0:
-                                    # Calculate cumulative return up to available data
-                                    cumulative_return_historical = np.prod(1 + asset_returns_historical) - 1
+                            if end_period > start_period and start_period < available_periods:
+                                # Get returns for the current year (since last rebalancing)
+                                year_returns = returns_df[ticker].iloc[start_period:end_period].values
+                                if len(year_returns) > 0:
+                                    # Calculate cumulative return for this year
+                                    cumulative_return = np.prod(1 + year_returns) - 1
 
-                                    # If period_idx exceeds available data, continue drift using average return
-                                    if period_idx >= available_periods:
-                                        # Calculate average return per period from historical data
-                                        avg_return_per_period = np.mean(asset_returns_historical)
-                                        # Calculate additional periods beyond available data
-                                        additional_periods = period_idx - available_periods + 1
-                                        # Continue cumulative return: (1 + historical_cum) * (1 + avg_return)^additional_periods - 1
-                                        cumulative_return = (1 + cumulative_return_historical) * (
+                                    # If we need to extend beyond available data, use average
+                                    if end_period < period_idx + 1:
+                                        avg_return_per_period = np.mean(year_returns) if len(year_returns) > 0 else 0.0
+                                        additional_periods = (period_idx + 1) - end_period
+                                        cumulative_return = (1 + cumulative_return) * (
                                             (1 + avg_return_per_period) ** additional_periods
                                         ) - 1
-                                    else:
-                                        # Use cumulative return up to period_idx
-                                        asset_returns_up_to_period = returns_df[ticker].iloc[: period_idx + 1].values
-                                        cumulative_return = np.prod(1 + asset_returns_up_to_period) - 1
 
-                                    asset_cumulative_returns[ac] = cumulative_return
+                                    asset_returns_since_rebalance[ac] = cumulative_return
                                 else:
-                                    asset_cumulative_returns[ac] = 0.0
+                                    asset_returns_since_rebalance[ac] = 0.0
                             else:
-                                asset_cumulative_returns[ac] = 0.0
+                                asset_returns_since_rebalance[ac] = 0.0
                         else:
-                            asset_cumulative_returns[ac] = 0.0
+                            asset_returns_since_rebalance[ac] = 0.0
                     else:
-                        asset_cumulative_returns[ac] = 0.0
+                        asset_returns_since_rebalance[ac] = 0.0
                 else:
-                    asset_cumulative_returns[ac] = 0.0
+                    asset_returns_since_rebalance[ac] = 0.0
 
-            # Calculate actual dollar amounts for non-crypto assets
+            # Calculate actual dollar amounts: start from rebalanced amounts, apply returns since rebalancing
             # Crypto gets the residual (total - sum of others) to avoid unrealistic deflation of other assets
             non_crypto_value = 0.0
             crypto_asset_class = None
@@ -690,10 +711,10 @@ class ChartComponent:
                             crypto_asset_class = ac
 
                 if not is_crypto:
-                    # Calculate value for non-crypto assets
-                    initial_amt = initial_amounts.get(ac, 0.0)
-                    cum_return = asset_cumulative_returns.get(ac, 0.0)
-                    dollar_amounts[ac] = initial_amt * (1 + cum_return)
+                    # Start from rebalanced amount, apply returns since rebalancing
+                    rebalanced_amt = rebalanced_amounts.get(ac, 0.0)
+                    year_return = asset_returns_since_rebalance.get(ac, 0.0)
+                    dollar_amounts[ac] = rebalanced_amt * (1 + year_return)
                     non_crypto_value += dollar_amounts[ac]
                 else:
                     # Will calculate crypto as residual
@@ -703,6 +724,14 @@ class ChartComponent:
             if crypto_asset_class:
                 crypto_value = max(0.0, portfolio_value - non_crypto_value)
                 dollar_amounts[crypto_asset_class] = crypto_value
+
+            # Normalize dollar amounts to sum to portfolio value (accounts for contributions/withdrawals)
+            total_drifted_value = sum(dollar_amounts.values())
+            if total_drifted_value > 0 and portfolio_value > 0:
+                # Scale all dollar amounts proportionally to match actual portfolio value
+                scale_factor = portfolio_value / total_drifted_value
+                for ac in asset_classes:
+                    dollar_amounts[ac] = dollar_amounts[ac] * scale_factor
 
             # Calculate actual percentages
             if portfolio_value > 0:
