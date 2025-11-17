@@ -5,11 +5,13 @@ A comprehensive retirement planning application that combines historical market 
 ## Features
 
 ### Simulation Approach
+
 - **Unified Simulation**: Uses historical market data for the accumulation phase (pre-retirement) and Monte Carlo projections for the retirement phase
 - **Historical Data**: Real market returns from Yahoo Finance for pre-retirement years
 - **Monte Carlo**: Statistical projections calibrated to historical returns for retirement years
 
 ### Dynamic Withdrawal System
+
 - **CPI-Adjusted Spending**: Adjusts retirement spending based on historical Consumer Price Index (CPI) data
 - **Expense Categories**: Break down spending into 8 categories:
   - Food and beverages
@@ -26,6 +28,7 @@ A comprehensive retirement planning application that combines historical market 
   - Dollar amounts per category
 
 ### Additional Features
+
 - **Daily/Monthly** return frequency toggle
 - **Smart data fetching** with historical backfill (SPY→^GSPC, VTI→VTSMX, etc.)
 - **Education & Wage Tracking**: Input education level and current wage for future wage growth calculations
@@ -89,23 +92,26 @@ python -c "import streamlit, yfinance, numpy, pandas, plotly; print('All package
 ### Local Development
 
 ```bash
-# Option 1: Using run.py (recommended)
-python run.py
+# Run the app directly
+streamlit run app/main.py
 
-# Option 2: Direct Streamlit command
-PYTHONPATH="." streamlit run app/main.py
+# With debug logging
+streamlit run app/main.py --logger.level=debug
 
-# Option 3: With debug logging
-PYTHONPATH="." streamlit run app/main.py --logger.level=debug
+# With custom port
+streamlit run app/main.py --server.port=8502
 ```
 
-The app will be available at `http://localhost:8501`
+The app will be available at `http://localhost:8501` (or your specified port)
+
+**Note:** The `app/main.py` file includes path setup code that ensures imports work correctly whether run locally or on Streamlit Cloud.
 
 ## Deployment
 
 ### Streamlit Cloud (Recommended)
 
 1. **Push your code to GitHub**
+
    ```bash
    git add .
    git commit -m "Prepare for deployment"
@@ -113,18 +119,20 @@ The app will be available at `http://localhost:8501`
    ```
 
 2. **Deploy on Streamlit Cloud**
+
    - Go to [share.streamlit.io](https://share.streamlit.io)
    - Sign in with GitHub
    - Click "New app"
    - Select your repository
-   - Set the main file path: `streamlit_app.py` (or leave blank - Streamlit Cloud will auto-detect it)
+   - Set the main file path: `app/main.py`
    - Click "Deploy"
 
 3. **Important Notes for Streamlit Cloud**
    - Ensure `requirements.txt` is in the root directory (✓ already present)
-   - The root-level `streamlit_app.py` entry point is automatically detected
+   - The main file path should be set to `app/main.py`
    - The app will automatically install dependencies from `requirements.txt`
    - Data files in `data/` directory will be included automatically
+   - The `app/main.py` file includes path setup code to handle imports correctly
    - No additional configuration needed
 
 ### Other Deployment Options
@@ -153,6 +161,7 @@ CMD ["streamlit", "run", "app/main.py", "--server.port=8501", "--server.address=
 ```
 
 Build and run:
+
 ```bash
 docker build -t retirement-planner .
 docker run -p 8501:8501 retirement-planner
@@ -161,11 +170,13 @@ docker run -p 8501:8501 retirement-planner
 #### Traditional Server Deployment
 
 1. **Install dependencies on server**
+
    ```bash
    pip install -r requirements.txt
    ```
 
 2. **Run with process manager (e.g., systemd, supervisor)**
+
    ```bash
    streamlit run app/main.py --server.port=8501 --server.address=0.0.0.0
    ```
@@ -178,7 +189,8 @@ docker run -p 8501:8501 retirement-planner
 
 - [x] All dependencies listed in `requirements.txt`
 - [x] Data files present in `data/` directory
-- [x] Root-level entry point (`streamlit_app.py`) is present
+- [x] Main entry point (`app/main.py`) is configured correctly
+- [x] Path setup code is present in `app/main.py` for proper imports
 - [ ] Environment variables configured (if needed)
 - [ ] Port 8501 is accessible (or configured port)
 - [ ] Internet access for Yahoo Finance API calls
@@ -195,6 +207,7 @@ Edit `app/config.py` to customize:
 ## Data Sources
 
 ### Market Data
+
 The app automatically maps modern ETFs to historical equivalents:
 
 - **SPY** → **^GSPC** (S&P 500 index, 1950s+)
@@ -202,12 +215,14 @@ The app automatically maps modern ETFs to historical equivalents:
 - **BND** → **VBMFX** (Vanguard Total Bond Market, 1986+)
 
 ### Inflation Data
+
 - **CPI Data**: Historical US Consumer Price Index data from BLS (Bureau of Labor Statistics)
 - **Location**: `data/CPI.csv`
 - **Usage**: Calculates historical annual inflation rates for dynamic withdrawal adjustments
 - **Source**: https://www.bls.gov/cpi/
 
 ### Wage Data (Future)
+
 - **Median Usual Weekly Earnings**: Historical wage data by education level
 - **Source**: https://www.bls.gov/cps/earnings.htm
 - **Status**: Structure in place, data loading to be implemented
@@ -215,12 +230,14 @@ The app automatically maps modern ETFs to historical equivalents:
 ## Usage
 
 ### Basic Simulation
+
 1. Enter your current age, retirement age, and planning horizon
 2. Set your portfolio allocation (tickers and weights)
 3. Enter savings and spending amounts
 4. Click "Run Simulation" to see results
 
 ### Dynamic Withdrawal Mode
+
 1. Enable "Use dynamic withdrawal (CPI-adjusted)" checkbox
 2. Choose input mode:
    - **Total + Percentages**: Enter total annual spending and adjust category percentages using the interactive pie chart or sliders
