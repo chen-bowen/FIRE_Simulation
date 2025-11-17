@@ -39,9 +39,7 @@ class ChartComponent:
         """Check if a ticker is a crypto asset."""
         return self.data_service.is_crypto_ticker(ticker)
 
-    def plot_simulation_paths(
-        self, result: SimulationResult, title: str, current_age: int = None
-    ) -> None:
+    def plot_simulation_paths(self, result: SimulationResult, title: str, current_age: int = None) -> None:
         """Plot simulation paths with percentile bands and sample paths.
 
         Args:
@@ -140,6 +138,7 @@ class ChartComponent:
         title: str = "Portfolio Quantiles",
         current_age: int = None,
         current_year: int = None,
+        initial_balance: float = None,
     ) -> None:
         """Plot interactive portfolio chart with controls for metric type and chart type.
 
@@ -180,15 +179,11 @@ class ChartComponent:
             # Render appropriate chart based on selections
             if chart_type == "Min/Max/Mean":
                 if metric_type == "Portfolio":
-                    self._plot_portfolio_quantiles(
-                        result, title, current_age, current_year
-                    )
+                    self._plot_portfolio_quantiles(result, title, current_age, current_year)
                 else:  # Spending
-                    self._plot_spending_quantiles(
-                        result, "Spending Quantiles", current_age, current_year
-                    )
+                    self._plot_spending_quantiles(result, "Spending Quantiles", current_age, current_year)
             else:  # Spending vs Returns
-                self._plot_spending_vs_returns(result, current_year)
+                self._plot_spending_vs_returns(result, current_year, initial_balance)
 
             # Add note about today's dollars (styled like examples)
             st.markdown(
@@ -234,11 +229,7 @@ class ChartComponent:
         fig = go.Figure()
 
         # Calculate additional percentiles for richer visualization
-        if (
-            result.sample_paths is not None
-            and len(result.sample_paths) > 0
-            and result.sample_paths.shape[1] == len(result.median_path)
-        ):
+        if result.sample_paths is not None and len(result.sample_paths) > 0 and result.sample_paths.shape[1] == len(result.median_path):
             # Use sample paths to calculate more percentiles
             p25 = np.percentile(result.sample_paths, 25, axis=0)
             p75 = np.percentile(result.sample_paths, 75, axis=0)
@@ -423,9 +414,7 @@ class ChartComponent:
 
         st.plotly_chart(fig, use_container_width=True)
 
-    def _plot_spending_vs_returns(
-        self, result: SimulationResult, current_year: int = None
-    ) -> None:
+    def _plot_spending_vs_returns(self, result: SimulationResult, current_year: int = None, initial_balance: float = None) -> None:
         """Plot spending vs returns bar chart.
 
         Args:
@@ -438,9 +427,7 @@ class ChartComponent:
             current_year = datetime.now().year
 
         if result.spending_over_time is None or result.returns_over_time is None:
-            st.warning(
-                "Spending and returns data not available for this visualization."
-            )
+            st.warning("Spending and returns data not available for this visualization.")
             return
 
         ppy = result.periods_per_year
@@ -451,6 +438,19 @@ class ChartComponent:
         annual_spending = []
         annual_returns = []
 
+        # Track virtual balance that grows only with returns (ignoring contributions/spending)
+        # Start from true initial balance if available, otherwise estimate from first period
+        if initial_balance is not None and initial_balance > 0:
+            virtual_balance = initial_balance
+        elif len(result.median_path) > 0 and len(result.returns_over_time) > 0:
+            period_0_return = result.returns_over_time[0]
+            if not np.isnan(period_0_return) and period_0_return > -0.99:
+                virtual_balance = result.median_path[0] / (1.0 + period_0_return)
+            else:
+                virtual_balance = result.median_path[0]
+        else:
+            virtual_balance = 0.0
+
         for year_idx in range(total_years):
             start_period = year_idx * ppy
             end_period = min((year_idx + 1) * ppy, result.horizon_periods)
@@ -458,18 +458,15 @@ class ChartComponent:
             # Sum spending for the year (spending_over_time is per-period)
             year_spending = np.sum(result.spending_over_time[start_period:end_period])
 
-            # Calculate portfolio return for the year
-            # Returns are per-period, so we need to compound them
+            # Calculate returns on virtual balance (pure investment gains, no cash flows)
             year_returns = result.returns_over_time[start_period:end_period]
-            if len(year_returns) > 0 and start_period < len(result.median_path):
-                # Use portfolio value at start of year
-                portfolio_value_start = result.median_path[start_period]
-                # Compound returns: (1 + r1) * (1 + r2) * ... - 1
-                compounded_return = np.prod(1 + year_returns) - 1
-                # Convert to dollar amount
-                year_return_dollars = portfolio_value_start * compounded_return
-            else:
-                year_return_dollars = 0.0
+            year_return_dollars = 0.0
+
+            for period_return in year_returns:
+                if not np.isnan(period_return) and period_return > -0.99:
+                    period_return_dollars = virtual_balance * period_return
+                    year_return_dollars += period_return_dollars
+                    virtual_balance = virtual_balance * (1.0 + period_return)
 
             years.append(current_year + year_idx)
             annual_spending.append(-year_spending)  # Negative for spending
@@ -543,15 +540,9 @@ class ChartComponent:
         # Get portfolio weights from session state if not provided
         if portfolio_weights is None:
             if "portfolio_weights" in st.session_state:
-                portfolio_weights = {
-                    k: v
-                    for k, v in st.session_state["portfolio_weights"].items()
-                    if v > 0
-                }
+                portfolio_weights = {k: v for k, v in st.session_state["portfolio_weights"].items() if v > 0}
             else:
-                st.warning(
-                    "Portfolio weights not available. Cannot display allocation breakdown."
-                )
+                st.warning("Portfolio weights not available. Cannot display allocation breakdown.")
                 return
 
         if not portfolio_weights:
@@ -621,11 +612,7 @@ class ChartComponent:
         dollar_amounts = {}
         actual_percentages = {}
 
-        if (
-            returns_df is not None
-            and initial_balance is not None
-            and asset_class_mapping is not None
-        ):
+        if returns_df is not None and initial_balance is not None and asset_class_mapping is not None:
             # Calculate actual asset balances based on individual asset returns (no rebalancing)
             # Get initial dollar amounts per asset class
             initial_amounts = {}
@@ -642,54 +629,33 @@ class ChartComponent:
                     # Get tickers for this asset class
                     tickers = asset_class_mapping[ac]
                     # Find matching tickers in returns_df
-                    matching_tickers = (
-                        [t for t in tickers if t in returns_df.columns]
-                        if returns_df is not None
-                        else []
-                    )
+                    matching_tickers = [t for t in tickers if t in returns_df.columns] if returns_df is not None else []
                     if matching_tickers:
                         # Use first matching ticker
                         ticker = matching_tickers[0]
                         if ticker in returns_df.columns:
                             # Calculate cumulative return from start up to available data
                             if available_periods > 0:
-                                asset_returns_historical = (
-                                    returns_df[ticker].iloc[:available_periods].values
-                                )
+                                asset_returns_historical = returns_df[ticker].iloc[:available_periods].values
 
                                 if len(asset_returns_historical) > 0:
                                     # Calculate cumulative return up to available data
-                                    cumulative_return_historical = (
-                                        np.prod(1 + asset_returns_historical) - 1
-                                    )
+                                    cumulative_return_historical = np.prod(1 + asset_returns_historical) - 1
 
                                     # If period_idx exceeds available data, continue drift using average return
                                     if period_idx >= available_periods:
                                         # Calculate average return per period from historical data
-                                        avg_return_per_period = np.mean(
-                                            asset_returns_historical
-                                        )
+                                        avg_return_per_period = np.mean(asset_returns_historical)
                                         # Calculate additional periods beyond available data
-                                        additional_periods = (
-                                            period_idx - available_periods + 1
-                                        )
+                                        additional_periods = period_idx - available_periods + 1
                                         # Continue cumulative return: (1 + historical_cum) * (1 + avg_return)^additional_periods - 1
-                                        cumulative_return = (
-                                            1 + cumulative_return_historical
-                                        ) * (
-                                            (1 + avg_return_per_period)
-                                            ** additional_periods
+                                        cumulative_return = (1 + cumulative_return_historical) * (
+                                            (1 + avg_return_per_period) ** additional_periods
                                         ) - 1
                                     else:
                                         # Use cumulative return up to period_idx
-                                        asset_returns_up_to_period = (
-                                            returns_df[ticker]
-                                            .iloc[: period_idx + 1]
-                                            .values
-                                        )
-                                        cumulative_return = (
-                                            np.prod(1 + asset_returns_up_to_period) - 1
-                                        )
+                                        asset_returns_up_to_period = returns_df[ticker].iloc[: period_idx + 1].values
+                                        cumulative_return = np.prod(1 + asset_returns_up_to_period) - 1
 
                                     asset_cumulative_returns[ac] = cumulative_return
                                 else:
@@ -716,11 +682,7 @@ class ChartComponent:
                     crypto_asset_class = ac
                 elif ac in asset_class_mapping:
                     tickers = asset_class_mapping[ac]
-                    matching_tickers = (
-                        [t for t in tickers if t in returns_df.columns]
-                        if returns_df is not None
-                        else []
-                    )
+                    matching_tickers = [t for t in tickers if t in returns_df.columns] if returns_df is not None else []
                     if matching_tickers:
                         ticker = matching_tickers[0]
                         if self._is_crypto_ticker(ticker):
@@ -745,9 +707,7 @@ class ChartComponent:
             # Calculate actual percentages
             if portfolio_value > 0:
                 for ac in asset_classes:
-                    actual_percentages[ac] = (
-                        dollar_amounts[ac] / portfolio_value
-                    ) * 100.0
+                    actual_percentages[ac] = (dollar_amounts[ac] / portfolio_value) * 100.0
             else:
                 # Fallback to original weights if calculation fails
                 for ac, weight_pct in zip(asset_classes, weights_array):
@@ -794,10 +754,7 @@ class ChartComponent:
             colors = [color_map.get(label, "#95a5a6") for label in labels]
 
             # Create hover text with both dollar amount and percentage
-            hover_text = [
-                f"{label}<br>${amt:,.0f}<br>{pct}"
-                for label, amt, pct in zip(labels, values, percentages)
-            ]
+            hover_text = [f"{label}<br>${amt:,.0f}<br>{pct}" for label, amt, pct in zip(labels, values, percentages)]
 
             fig = go.Figure(
                 data=[
@@ -839,9 +796,7 @@ class ChartComponent:
             st.metric("Total Value", f"${portfolio_value:,.0f}")
 
             # Show P10-P90 range
-            st.caption(
-                f"Range: ${portfolio_value_p10:,.0f} (P10) - ${portfolio_value_p90:,.0f} (P90)"
-            )
+            st.caption(f"Range: ${portfolio_value_p10:,.0f} (P10) - ${portfolio_value_p90:,.0f} (P90)")
 
             st.markdown("#### Allocation")
             for ac, amt in dollar_amounts.items():
@@ -874,10 +829,7 @@ class ChartComponent:
             mc_result: Monte Carlo simulation result
             current_age: Current age for age-based x-axis labels (optional)
         """
-        years_hist = (
-            np.arange(historical_result.horizon_periods)
-            / historical_result.periods_per_year
-        )
+        years_hist = np.arange(historical_result.horizon_periods) / historical_result.periods_per_year
         years_mc = np.arange(mc_result.horizon_periods) / mc_result.periods_per_year
 
         # Use age if provided, otherwise use years
@@ -954,12 +906,8 @@ class ChartComponent:
 
         # Format x-axis to show integer values with adaptive tick interval
         if current_age is not None:
-            max_age_hist = current_age + (
-                historical_result.horizon_periods / historical_result.periods_per_year
-            )
-            max_age_mc = current_age + (
-                mc_result.horizon_periods / mc_result.periods_per_year
-            )
+            max_age_hist = current_age + (historical_result.horizon_periods / historical_result.periods_per_year)
+            max_age_mc = current_age + (mc_result.horizon_periods / mc_result.periods_per_year)
             max_age = max(max_age_hist, max_age_mc)
             age_range = max_age - current_age
             # Adaptive tick interval: 5 years for long ranges, 2-3 for shorter
@@ -1022,22 +970,14 @@ class ChartComponent:
             if i % ppy == 0 and i > 0:  # End of a year (skip i=0 as it's already added)
                 # Get wage for this age (use the year we're ending)
                 age = current_age + int(years_into_accumulation)
-                weekly_wage = self.data_service.get_wage_for_age(
-                    params.education_level, current_age, current_year, age
-                )
+                weekly_wage = self.data_service.get_wage_for_age(params.education_level, current_age, current_year, age)
                 if weekly_wage is None:
-                    weekly_wage = self.data_service.get_income_for_education_level(
-                        params.education_level
-                    )
+                    weekly_wage = self.data_service.get_income_for_education_level(params.education_level)
                     if weekly_wage is None:
                         continue
-                    growth_rate = self.data_service.calculate_wage_growth_rate(
-                        params.education_level
-                    )
+                    growth_rate = self.data_service.calculate_wage_growth_rate(params.education_level)
                     if growth_rate:
-                        weekly_wage = weekly_wage * (
-                            (1.0 + growth_rate) ** years_into_accumulation
-                        )
+                        weekly_wage = weekly_wage * ((1.0 + growth_rate) ** years_into_accumulation)
 
                 annual_wage = self.data_service.get_annual_wage(weekly_wage)
                 annual_contrib = annual_wage * params.savings_rate
@@ -1049,9 +989,7 @@ class ChartComponent:
                 # Portfolio grew from prev_portfolio_balance to portfolio_balance
                 # During this year, we contributed annual_contrib
                 # So: return = portfolio_balance - prev_portfolio_balance - annual_contrib
-                annual_return = (
-                    portfolio_balance - prev_portfolio_balance - annual_contrib
-                )
+                annual_return = portfolio_balance - prev_portfolio_balance - annual_contrib
 
                 # Add this year's contribution to cumulative
                 cumulative_contrib += annual_contrib
@@ -1186,15 +1124,11 @@ class ChartComponent:
 
         # Determine simulation type
         if result.data_limited:
-            simulation_type = (
-                "Monte Carlo simulation (statistical modeling based on historical data)"
-            )
+            simulation_type = "Monte Carlo simulation (statistical modeling based on historical data)"
             if result.available_years:
                 simulation_type += f" - {result.available_years:.1f} years of historical data available"
         else:
-            simulation_type = (
-                "Historical simulation (rolling windows of actual market data)"
-            )
+            simulation_type = "Historical simulation (rolling windows of actual market data)"
 
         col1, col2 = st.columns(2)
         with col1:
