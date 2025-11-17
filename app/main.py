@@ -271,35 +271,36 @@ def main():
             inputs_for_hash["category_percentages"] = tuple(sorted(category_percentages.items()))
     inputs_hash = hashlib.md5(json.dumps(inputs_for_hash, sort_keys=True, default=str).encode()).hexdigest()
 
-    # Check if inputs have changed - if so, clear cached simulation
+    # Check if inputs have changed - if so, clear ALL cached simulation data
+    inputs_changed = False
     if "last_inputs_hash" in st.session_state:
         if st.session_state["last_inputs_hash"] != inputs_hash:
-            # Inputs changed, clear simulation cache
-            if "simulation_result" in st.session_state:
-                del st.session_state["simulation_result"]
-            if "simulation_pre_retire_years" in st.session_state:
-                del st.session_state["simulation_pre_retire_years"]
-            if "simulation_current_age" in st.session_state:
-                del st.session_state["simulation_current_age"]
-            if "simulation_returns_df" in st.session_state:
-                del st.session_state["simulation_returns_df"]
-            if "simulation_initial_balance" in st.session_state:
-                del st.session_state["simulation_initial_balance"]
-            # Reset slider to year 1
-            if "portfolio_year_slider" in st.session_state:
-                st.session_state["portfolio_year_slider"] = 1
+            inputs_changed = True
+            # Inputs changed - clear all simulation-related session state
+            simulation_keys = [
+                "simulation_result",
+                "simulation_params",
+                "simulation_pre_retire_years",
+                "simulation_current_age",
+                "simulation_returns_df",
+                "simulation_initial_balance",
+                "portfolio_year_slider",
+            ]
+            for key in simulation_keys:
+                if key in st.session_state:
+                    del st.session_state[key]
 
     # Store current inputs hash
     st.session_state["last_inputs_hash"] = inputs_hash
 
-    # Check if we have a cached simulation result
+    # Only use cached results if inputs haven't changed
     simulation_result = None
     returns_df_cached = None
-    if "simulation_result" in st.session_state:
+    if not inputs_changed and "simulation_result" in st.session_state:
         simulation_result = st.session_state["simulation_result"]
         returns_df_cached = st.session_state.get("simulation_returns_df")
 
-    # Run button
+    # Run button - always runs fresh simulation
     if st.button("Run Simulation", type="primary"):
         try:
             # Fetch data
@@ -369,7 +370,21 @@ def main():
                     inputs["seed"],
                 )
 
-            # Store simulation result and related data in session state for persistence across slider interactions
+            # Store simulation result and related data in session state
+            # Clear any old simulation data first to ensure clean state
+            simulation_keys = [
+                "simulation_result",
+                "simulation_params",
+                "simulation_pre_retire_years",
+                "simulation_current_age",
+                "simulation_returns_df",
+                "simulation_initial_balance",
+            ]
+            for key in simulation_keys:
+                if key in st.session_state:
+                    del st.session_state[key]
+
+            # Store new simulation results
             st.session_state["simulation_result"] = simulation_result
             st.session_state["simulation_params"] = params
             st.session_state["simulation_pre_retire_years"] = pre_retire_years
@@ -405,7 +420,10 @@ def main():
 
         with tab2:
             # Plot savings contributions and returns breakdown
-            stored_params = st.session_state.get("simulation_params")
+            # Only use stored params if they match current simulation (not stale)
+            stored_params = None
+            if simulation_result is not None and not inputs_changed:
+                stored_params = st.session_state.get("simulation_params")
             if stored_params and stored_params.use_wage_based_savings and stored_params.education_level:
                 current_year = stored_params.current_year or datetime.now().year
                 try:
@@ -428,9 +446,14 @@ def main():
         if "portfolio_weights" in st.session_state:
             portfolio_weights_dict = {k: v for k, v in st.session_state["portfolio_weights"].items() if v > 0}
 
-        # Use stored values if available, otherwise use current inputs
-        stored_pre_retire_years = st.session_state.get("simulation_pre_retire_years", pre_retire_years)
-        stored_current_age = st.session_state.get("simulation_current_age", inputs["current_age"])
+        # Use stored values from current simulation result (only if result exists and matches)
+        if simulation_result is not None and not inputs_changed:
+            stored_pre_retire_years = st.session_state.get("simulation_pre_retire_years", pre_retire_years)
+            stored_current_age = st.session_state.get("simulation_current_age", inputs["current_age"])
+        else:
+            # Use current inputs if no valid cached simulation
+            stored_pre_retire_years = pre_retire_years
+            stored_current_age = inputs["current_age"]
 
         # Get asset class mapping from sidebar component
         asset_class_mapping = None
@@ -443,7 +466,7 @@ def main():
             current_age=stored_current_age,
             portfolio_weights=portfolio_weights_dict,
             returns_df=returns_df_cached,
-            initial_balance=st.session_state.get("simulation_initial_balance", inputs["initial_balance"]),
+            initial_balance=inputs["initial_balance"],
             asset_class_mapping=asset_class_mapping,
         )
 
