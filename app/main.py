@@ -7,16 +7,27 @@ This module orchestrates the entire retirement planning application, including:
 - Input validation and error handling
 """
 
-from datetime import datetime
+import os
+import sys
 
-import streamlit as st
+# Add project root to Python path before imports
+# This ensures 'app' package can be found when Streamlit Cloud runs this file directly
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
-from app.components import ChartComponent, ResultsComponent, SidebarComponent
+from datetime import datetime  # noqa: E402
 
-# Import application components and services
-from app.schemas import SimulationParams
-from app.services import DataService, SimulationService
-from app.utils import (
+import streamlit as st  # noqa: E402
+
+from app.components import (  # noqa: E402
+    ChartComponent,
+    ResultsComponent,
+    SidebarComponent,
+)
+from app.schemas import SimulationParams  # noqa: E402
+from app.services import DataService, SimulationService  # noqa: E402
+from app.utils import (  # noqa: E402
     align_weights_with_data,
     calculate_horizon_years,
     validate_age_inputs,
