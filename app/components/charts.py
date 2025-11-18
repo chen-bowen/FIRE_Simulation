@@ -41,9 +41,7 @@ class ChartComponent:
         """Check if a ticker is a crypto asset."""
         return self.data_service.is_crypto_ticker(ticker)
 
-    def plot_simulation_paths(
-        self, result: SimulationResult, title: str, current_age: int = None
-    ) -> None:
+    def plot_simulation_paths(self, result: SimulationResult, title: str, current_age: int = None) -> None:
         """Plot simulation paths with percentile bands and sample paths.
 
         Args:
@@ -70,17 +68,19 @@ class ChartComponent:
                 name="P90",
                 line=dict(color="rgba(158, 202, 225, 0.0)", width=0),
                 showlegend=False,
+                hoverinfo="skip",
             )
         )
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=result.p10_path,
-                name="80% Confidence Band",
+                name="P10",
                 line=dict(color="rgba(158, 202, 225, 0.0)", width=0),
                 fill="tonexty",
                 fillcolor="rgba(158, 202, 225, 0.2)",
-                showlegend=True,
+                showlegend=False,
+                hoverinfo="skip",
             )
         )
 
@@ -89,9 +89,10 @@ class ChartComponent:
             go.Scatter(
                 x=x,
                 y=result.p90_path,
-                name="P90 (90th Percentile)",
+                name="P90",
                 line=dict(color="#3182bd", width=1.5, dash="dash"),
                 showlegend=True,
+                hovertemplate="P90: $%{y:,.0f}<extra></extra>",
             )
         )
         fig.add_trace(
@@ -101,15 +102,17 @@ class ChartComponent:
                 name="Median",
                 line=dict(color="#08519c", width=3),
                 showlegend=True,
+                hovertemplate="Median: $%{y:,.0f}<extra></extra>",
             )
         )
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=result.p10_path,
-                name="P10 (10th Percentile)",
+                name="P10",
                 line=dict(color="#3182bd", width=1.5, dash="dash"),
                 showlegend=True,
+                hovertemplate="P10: $%{y:,.0f}<extra></extra>",
             )
         )
 
@@ -183,13 +186,9 @@ class ChartComponent:
             # Render appropriate chart based on selections
             if chart_type == "Min/Max/Mean":
                 if metric_type == "Portfolio":
-                    self._plot_portfolio_quantiles(
-                        result, title, current_age, current_year
-                    )
+                    self._plot_portfolio_quantiles(result, title, current_age, current_year)
                 else:  # Spending
-                    self._plot_spending_quantiles(
-                        result, "Spending Quantiles", current_age, current_year
-                    )
+                    self._plot_spending_quantiles(result, "Spending Quantiles", current_age, current_year)
             else:  # Spending vs Returns
                 self._plot_spending_vs_returns(result, current_year, initial_balance)
 
@@ -237,47 +236,16 @@ class ChartComponent:
         fig = go.Figure()
 
         # Calculate additional percentiles for richer visualization
-        if (
-            result.sample_paths is not None
-            and len(result.sample_paths) > 0
-            and result.sample_paths.shape[1] == len(result.median_path)
-        ):
+        if result.sample_paths is not None and len(result.sample_paths) > 0 and result.sample_paths.shape[1] == len(result.median_path):
             # Use sample paths to calculate more percentiles
             p25 = np.percentile(result.sample_paths, 25, axis=0)
             p75 = np.percentile(result.sample_paths, 75, axis=0)
-            p5 = np.percentile(result.sample_paths, 5, axis=0)
-            p95 = np.percentile(result.sample_paths, 95, axis=0)
         else:
             # Fallback to interpolated percentiles based on P10, median, P90
             p25 = result.p10_path + (result.median_path - result.p10_path) * 0.75
             p75 = result.median_path + (result.p90_path - result.median_path) * 0.75
-            p5 = result.p10_path - (result.median_path - result.p10_path) * 0.5
-            p95 = result.p90_path + (result.p90_path - result.median_path)
 
-        # Add shaded quantile bands with green color scheme
-        # Outer band: P5 to P95
-        fig.add_trace(
-            go.Scatter(
-                x=x,
-                y=p95,
-                name="P95",
-                line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
-                showlegend=False,
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=x,
-                y=p5,
-                name="90% Range",
-                line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
-                fill="tonexty",
-                fillcolor="rgba(26, 188, 156, 0.15)",
-                showlegend=False,
-            )
-        )
-
-        # Middle band: P10 to P90
+        # Add shaded confidence band: P10 to P90
         fig.add_trace(
             go.Scatter(
                 x=x,
@@ -285,17 +253,19 @@ class ChartComponent:
                 name="P90",
                 line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
                 showlegend=False,
+                hoverinfo="skip",
             )
         )
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=result.p10_path,
-                name="80% Range",
+                name="P10",
                 line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
                 fill="tonexty",
                 fillcolor="rgba(26, 188, 156, 0.25)",
                 showlegend=False,
+                hoverinfo="skip",
             )
         )
 
@@ -307,28 +277,71 @@ class ChartComponent:
                 name="P75",
                 line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
                 showlegend=False,
+                hoverinfo="skip",
             )
         )
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=p25,
-                name="50% Range",
+                name="P25",
                 line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
                 fill="tonexty",
                 fillcolor="rgba(26, 188, 156, 0.35)",
                 showlegend=False,
+                hoverinfo="skip",
             )
         )
 
-        # Add median line
+        # Add percentile lines with labels
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=result.p90_path,
+                name="P90",
+                line=dict(color="#1abc9c", width=1.5, dash="dash"),
+                showlegend=True,
+                hovertemplate="P90: $%{y:,.0f}<extra></extra>",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=p75,
+                name="P75",
+                line=dict(color="#1abc9c", width=1.5, dash="dash"),
+                showlegend=True,
+                hovertemplate="P75: $%{y:,.0f}<extra></extra>",
+            )
+        )
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=result.median_path,
                 name="Median",
                 line=dict(color="#1abc9c", width=2.5),
-                showlegend=False,
+                showlegend=True,
+                hovertemplate="Median: $%{y:,.0f}<extra></extra>",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=p25,
+                name="P25",
+                line=dict(color="#1abc9c", width=1.5, dash="dash"),
+                showlegend=True,
+                hovertemplate="P25: $%{y:,.0f}<extra></extra>",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=result.p10_path,
+                name="P10",
+                line=dict(color="#1abc9c", width=1.5, dash="dash"),
+                showlegend=True,
+                hovertemplate="P10: $%{y:,.0f}<extra></extra>",
             )
         )
 
@@ -337,7 +350,7 @@ class ChartComponent:
             xaxis_title=xaxis_title,
             yaxis_title="Portfolio Value ($)",
             hovermode="x unified",
-            showlegend=False,
+            showlegend=True,
         )
 
         # Format x-axis
@@ -444,9 +457,7 @@ class ChartComponent:
             current_year = datetime.now().year
 
         if result.spending_over_time is None or result.returns_over_time is None:
-            st.warning(
-                "Spending and returns data not available for this visualization."
-            )
+            st.warning("Spending and returns data not available for this visualization.")
             return
 
         ppy = result.periods_per_year
@@ -550,10 +561,7 @@ class ChartComponent:
         )
 
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(
-            "Returns reflect investment growth on the median portfolio after each year's "
-            "contributions and withdrawals."
-        )
+        st.caption("Returns reflect investment growth on the median portfolio after each year's " "contributions and withdrawals.")
 
     def plot_terminal_wealth_histogram(
         self,
@@ -581,15 +589,9 @@ class ChartComponent:
         # Get portfolio weights from session state if not provided
         if portfolio_weights is None:
             if "portfolio_weights" in st.session_state:
-                portfolio_weights = {
-                    k: v
-                    for k, v in st.session_state["portfolio_weights"].items()
-                    if v > 0
-                }
+                portfolio_weights = {k: v for k, v in st.session_state["portfolio_weights"].items() if v > 0}
             else:
-                st.warning(
-                    "Portfolio weights not available. Cannot display allocation breakdown."
-                )
+                st.warning("Portfolio weights not available. Cannot display allocation breakdown.")
                 return
 
         if not portfolio_weights:
@@ -659,11 +661,7 @@ class ChartComponent:
         dollar_amounts = {}
         actual_percentages = {}
 
-        if (
-            returns_df is not None
-            and initial_balance is not None
-            and asset_class_mapping is not None
-        ):
+        if returns_df is not None and initial_balance is not None and asset_class_mapping is not None:
             # Find the last rebalancing point
             # Rebalancing happens at the END of each year, so:
             # - For year N, rebalancing happens at period (N * ppy - 1) or start of year N+1
@@ -689,16 +687,12 @@ class ChartComponent:
 
             # Calculate how many periods since last rebalancing
             periods_since_rebalance = period_idx - rebalance_period + 1
-            periods_since_rebalance = max(
-                1, min(periods_since_rebalance, ppy)
-            )  # Clamp to current year
+            periods_since_rebalance = max(1, min(periods_since_rebalance, ppy))  # Clamp to current year
 
             # Calculate dollar amounts at last rebalancing (target allocation)
             rebalanced_amounts = {}
             for ac, weight_pct in zip(asset_classes, weights_array):
-                rebalanced_amounts[ac] = rebalanced_portfolio_value * (
-                    weight_pct / 100.0
-                )
+                rebalanced_amounts[ac] = rebalanced_portfolio_value * (weight_pct / 100.0)
 
             # Calculate returns since last rebalancing for each asset class
             asset_returns_since_rebalance = {}
@@ -709,11 +703,7 @@ class ChartComponent:
                     # Get tickers for this asset class
                     tickers = asset_class_mapping[ac]
                     # Find matching tickers in returns_df
-                    matching_tickers = (
-                        [t for t in tickers if t in returns_df.columns]
-                        if returns_df is not None
-                        else []
-                    )
+                    matching_tickers = [t for t in tickers if t in returns_df.columns] if returns_df is not None else []
                     if matching_tickers:
                         # Use first matching ticker
                         ticker = matching_tickers[0]
@@ -722,38 +712,22 @@ class ChartComponent:
                             start_period = rebalance_period
                             end_period = min(period_idx + 1, available_periods)
 
-                            if (
-                                end_period > start_period
-                                and start_period < available_periods
-                            ):
+                            if end_period > start_period and start_period < available_periods:
                                 # Get returns for the current year (since last rebalancing)
-                                year_returns = (
-                                    returns_df[ticker]
-                                    .iloc[start_period:end_period]
-                                    .values
-                                )
+                                year_returns = returns_df[ticker].iloc[start_period:end_period].values
                                 if len(year_returns) > 0:
                                     # Calculate cumulative return for this year
                                     cumulative_return = np.prod(1 + year_returns) - 1
 
                                     # If we need to extend beyond available data, use average
                                     if end_period < period_idx + 1:
-                                        avg_return_per_period = (
-                                            np.mean(year_returns)
-                                            if len(year_returns) > 0
-                                            else 0.0
-                                        )
-                                        additional_periods = (
-                                            period_idx + 1
-                                        ) - end_period
+                                        avg_return_per_period = np.mean(year_returns) if len(year_returns) > 0 else 0.0
+                                        additional_periods = (period_idx + 1) - end_period
                                         cumulative_return = (1 + cumulative_return) * (
-                                            (1 + avg_return_per_period)
-                                            ** additional_periods
+                                            (1 + avg_return_per_period) ** additional_periods
                                         ) - 1
 
-                                    asset_returns_since_rebalance[
-                                        ac
-                                    ] = cumulative_return
+                                    asset_returns_since_rebalance[ac] = cumulative_return
                                 else:
                                     asset_returns_since_rebalance[ac] = 0.0
                             else:
@@ -778,11 +752,7 @@ class ChartComponent:
                     crypto_asset_class = ac
                 elif ac in asset_class_mapping:
                     tickers = asset_class_mapping[ac]
-                    matching_tickers = (
-                        [t for t in tickers if t in returns_df.columns]
-                        if returns_df is not None
-                        else []
-                    )
+                    matching_tickers = [t for t in tickers if t in returns_df.columns] if returns_df is not None else []
                     if matching_tickers:
                         ticker = matching_tickers[0]
                         if self._is_crypto_ticker(ticker):
@@ -815,9 +785,7 @@ class ChartComponent:
             # Calculate actual percentages
             if portfolio_value > 0:
                 for ac in asset_classes:
-                    actual_percentages[ac] = (
-                        dollar_amounts[ac] / portfolio_value
-                    ) * 100.0
+                    actual_percentages[ac] = (dollar_amounts[ac] / portfolio_value) * 100.0
             else:
                 # Fallback to original weights if calculation fails
                 for ac, weight_pct in zip(asset_classes, weights_array):
@@ -864,10 +832,7 @@ class ChartComponent:
             colors = [color_map.get(label, "#95a5a6") for label in labels]
 
             # Create hover text with both dollar amount and percentage
-            hover_text = [
-                f"{label}<br>${amt:,.0f}<br>{pct}"
-                for label, amt, pct in zip(labels, values, percentages)
-            ]
+            hover_text = [f"{label}<br>${amt:,.0f}<br>{pct}" for label, amt, pct in zip(labels, values, percentages)]
 
             fig = go.Figure(
                 data=[
@@ -909,9 +874,7 @@ class ChartComponent:
             st.metric("Total Value", f"${portfolio_value:,.0f}")
 
             # Show P10-P90 range
-            st.caption(
-                f"Range: ${portfolio_value_p10:,.0f} (P10) - ${portfolio_value_p90:,.0f} (P90)"
-            )
+            st.caption(f"Range: ${portfolio_value_p10:,.0f} (P10) - ${portfolio_value_p90:,.0f} (P90)")
 
             st.markdown("#### Allocation")
             for ac, amt in dollar_amounts.items():
@@ -980,22 +943,14 @@ class ChartComponent:
             if i % ppy == 0 and i > 0:  # End of a year (skip i=0 as it's already added)
                 # Get wage for this age (use the year we're ending)
                 age = current_age + int(years_into_accumulation)
-                weekly_wage = self.data_service.get_wage_for_age(
-                    params.education_level, current_age, current_year, age
-                )
+                weekly_wage = self.data_service.get_wage_for_age(params.education_level, current_age, current_year, age)
                 if weekly_wage is None:
-                    weekly_wage = self.data_service.get_income_for_education_level(
-                        params.education_level
-                    )
+                    weekly_wage = self.data_service.get_income_for_education_level(params.education_level)
                     if weekly_wage is None:
                         continue
-                    growth_rate = self.data_service.calculate_wage_growth_rate(
-                        params.education_level
-                    )
+                    growth_rate = self.data_service.calculate_wage_growth_rate(params.education_level)
                     if growth_rate:
-                        weekly_wage = weekly_wage * (
-                            (1.0 + growth_rate) ** years_into_accumulation
-                        )
+                        weekly_wage = weekly_wage * ((1.0 + growth_rate) ** years_into_accumulation)
 
                 annual_wage = self.data_service.get_annual_wage(weekly_wage)
                 annual_contrib = annual_wage * params.savings_rate
@@ -1007,9 +962,7 @@ class ChartComponent:
                 # Portfolio grew from prev_portfolio_balance to portfolio_balance
                 # During this year, we contributed annual_contrib
                 # So: return = portfolio_balance - prev_portfolio_balance - annual_contrib
-                annual_return = (
-                    portfolio_balance - prev_portfolio_balance - annual_contrib
-                )
+                annual_return = portfolio_balance - prev_portfolio_balance - annual_contrib
 
                 # Add this year's contribution to cumulative
                 cumulative_contrib += annual_contrib
@@ -1144,15 +1097,11 @@ class ChartComponent:
 
         # Determine simulation type
         if result.data_limited:
-            simulation_type = (
-                "Hybrid simulation (historical accumulation + Monte Carlo retirement)"
-            )
+            simulation_type = "Hybrid simulation (historical accumulation + Monte Carlo retirement)"
             if result.available_years:
                 simulation_type += f" - {result.available_years:.1f} years of historical data used for accumulation"
         else:
-            simulation_type = (
-                "Hybrid simulation (historical accumulation + Monte Carlo retirement)"
-            )
+            simulation_type = "Hybrid simulation (historical accumulation + Monte Carlo retirement)"
 
         col1, col2 = st.columns(2)
         with col1:

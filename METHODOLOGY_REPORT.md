@@ -98,15 +98,15 @@ Tracks three components via PortfolioState dataclass:
 
 **Formula**: Cumulative inflation adjustment using compound growth: spending increases by inflation rate each year.
 
-**Methodology**: Uses actual year-by-year CPI rates per category when available (historical accumulation phase), falls back to historical averages for projections (retirement phase).
+**Methodology**: Inflation adjustments apply only during the retirement phase (no spending occurs during accumulation). Uses historical average category-specific CPI rates when available for dynamic withdrawals, otherwise falls back to overall historical average inflation rate. The same average rate is applied consistently across all retirement periods.
 
 ---
 
 ## 4. Simulation Methodology
 
-### 4.1 Hybrid Simulation (Default Approach)
+### 4.1 Hybrid Simulation
 
-**Methodology**: Combines historical data for accumulation phase with Monte Carlo projections for retirement phase.
+**Methodology**: The application uses a hybrid simulation approach that combines historical data for the accumulation phase with Monte Carlo projections for the retirement phase. This is the sole simulation method implemented.
 
 **Accumulation Phase**:
 
@@ -136,7 +136,7 @@ Tracks three components via PortfolioState dataclass:
 
 **Success Criteria**: Portfolio balance remains positive throughout retirement phase (not just terminal balance).
 
-**Statistics**: Success rate, percentiles (P10, P50/P90), sample paths for visualization (max 100).
+**Statistics**: Success rate, core percentiles (P10, P50 median, P90), sample paths for visualization (max 100). Additional percentiles (P25, P75) are calculated from sample paths for enhanced visualization.
 
 **Crypto Asset Handling** (if applicable): Return capping for normal volatility, rare extreme events injection, volatility dampening when projecting beyond available data.
 
@@ -152,11 +152,13 @@ Tracks three components via PortfolioState dataclass:
 
 ### 5.2 Percentiles
 
-Calculated across all paths at each time period:
+**Core Percentiles**: Calculated across all simulation paths at each time period:
 
 - P10 (10th percentile): 10% of paths fall below this value
 - P50 (median): 50% of paths fall below this value
 - P90 (90th percentile): 90% of paths fall below this value
+
+**Additional Percentiles**: For enhanced visualization, P25 and P75 are derived from sample paths (up to 100 paths) if available, otherwise interpolated from core percentiles.
 
 ### 5.3 Terminal Wealth Distribution
 
@@ -170,7 +172,9 @@ Terminal balances analyzed with mean, median, percentiles, and histogram visuali
 
 **Key Visualizations**:
 
-1. **Portfolio Charts**: Shaded confidence bands (P5-P95, P10-P90, P25-P75), median path, age/year-based x-axis
+1. **Portfolio Charts**:
+   - P10-P90 confidence band (80% coverage) with P25-P75 inner band (50% coverage) and median path
+   - Age/year-based x-axis with adaptive tick intervals
 2. **Allocation Explorer**: Interactive slider showing year-by-year allocation accounting for rebalancing, drift, contributions/withdrawals
 3. **Savings Breakdown**: Dual-axis chart showing cumulative portfolio balance, contributions, returns (primary), and annual contributions/returns (secondary)
 
@@ -224,7 +228,7 @@ Terminal balances analyzed with mean, median, percentiles, and histogram visuali
 
 - **Data**: Limited historical data for some assets; CPI/wage data may be incomplete
 - **Model**: No taxes or transaction costs; simplified rebalancing (annual only); no Social Security/pensions
-- **Simulation**: Monte Carlo assumes normality; may miss extreme tail events; historical limited by data
+- **Simulation**: Hybrid approach combines historical data and Monte Carlo projections; Monte Carlo assumes normality and may miss extreme tail events; historical portion limited by available data
 
 ---
 
@@ -238,7 +242,7 @@ Terminal balances analyzed with mean, median, percentiles, and histogram visuali
 
 ## 12. Conclusion
 
-The application employs a hybrid approach combining historical backtesting and Monte Carlo simulation. Key strengths include robust data handling, sophisticated portfolio management, category-specific inflation adjustments, wage-based contributions, and comprehensive visualization. The modular architecture supports future enhancements.
+The application employs a hybrid simulation approach that combines historical backtesting for the accumulation phase with Monte Carlo projections for the retirement phase. This unified method leverages the realism of historical market data where available while using statistical projections for future periods. Key strengths include robust data handling, sophisticated portfolio management, category-specific inflation adjustments, wage-based contributions, and comprehensive visualization. The modular architecture supports future enhancements.
 
 ---
 
