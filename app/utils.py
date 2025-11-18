@@ -90,7 +90,7 @@ def format_currency(amount: float) -> str:
     """Format currency amount for display."""
     abs_amount = abs(amount)
     sign = "-" if amount < 0 else ""
-    
+
     if abs_amount >= 1e6:
         return f"{sign}${abs_amount/1e6:.1f}M"
     elif abs_amount >= 1e3:

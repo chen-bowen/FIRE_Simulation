@@ -66,7 +66,7 @@ class PortfolioService:
         """
         # Apply contribution (pre-retire) or spending (retire) at start of period
         net_flow = contrib - spend
-        
+
         # Initialize or update asset values to reflect net flow
         if state.asset_values is None:
             # First period: initialize asset values based on target weights
