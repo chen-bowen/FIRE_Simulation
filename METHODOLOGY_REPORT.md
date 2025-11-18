@@ -14,12 +14,14 @@ This report documents the methodologies employed in the Retirement Planning Appl
 
 **Key Features**:
 
-- **Historical Ticker Mapping**: Modern ETFs (SPY, VTI, BND) mapped to historical equivalents (^GSPC, VTSMX, VBMFX) to extend data to 1950s-1990s
+- **Historical Ticker Mapping**: Modern ETFs (SPY, VTI, BND) mapped to historical equivalents (^GSPC, VTSMX, VBMFX) to extend data to 1950s-1990s. Bond ETFs (BND) map to bond mutual funds (VBMFX) to ensure bond price data (not yield indices) is used for accurate correlation calculations.
 - **Return Calculation**: Daily uses percentage change, monthly resamples to month-end then calculates percentage change
 - **Caching**: LRU cache (maxsize=64) for performance optimization to avoid redundant API calls
 - **Error Handling**: Graceful fallback with proportional weight scaling when data unavailable
 
 **Key Decision**: Historical ticker mapping extends data coverage significantly. Rather than limiting simulations to recent ETF data (often 2000s+), mapping modern ETFs to their historical index equivalents provides 50+ years of market history, enabling more robust backtesting and parameter calibration.
+
+**Bond Data Selection**: The system uses bond price data (BND/VBMFX) rather than yield indices (^TNX) for bond assets. This is critical because bond prices and yields move inversely—when yields rise, bond prices fall. Using yield indices would create incorrect correlation calculations with stocks. For example, during stock market crashes, bond prices typically rise (flight to safety), but yields fall. Using yield data would incorrectly show positive correlation (both declining) instead of the actual negative correlation that provides diversification benefits.
 
 ### 1.2 Inflation Data
 
@@ -186,7 +188,7 @@ Tracks three components via PortfolioState dataclass:
 
 **Key Decisions**:
 
-1. **Covariance matrix**: Captures asset correlations from historical data. A diversified portfolio's risk depends on correlations between assets, not just individual volatilities.
+1. **Covariance matrix**: Captures asset correlations from historical data. A diversified portfolio's risk depends on correlations between assets, not just individual volatilities. For bonds, using bond price data (BND/VBMFX) rather than yield indices (^TNX) is essential, as prices and yields move inversely. This ensures the covariance matrix correctly captures the negative correlation between stocks and bonds (stocks down → bond prices up), which is the foundation of diversification benefits in balanced portfolios.
 
 2. **Numerical stability jitter**: Adding `1e-12 * I` to the covariance matrix before Cholesky decomposition prevents numerical errors from near-singular matrices while having negligible impact on results.
 
