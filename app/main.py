@@ -3,7 +3,7 @@
 This module orchestrates the entire retirement planning application, including:
 - UI components (sidebar, charts, results)
 - Data services (market data fetching)
-- Simulation services (historical, Monte Carlo, hybrid)
+- Simulation services (hybrid: historical accumulation + Monte Carlo retirement)
 - Input validation and error handling
 """
 
@@ -60,7 +60,7 @@ def main():
     data_service = DataService()  # Fetches market data from Yahoo Finance
     simulation_service = (
         SimulationService()
-    )  # Runs historical, MC, and hybrid simulations
+    )  # Runs hybrid simulation (historical accumulation + Monte Carlo retirement)
 
     # Render sidebar and collect user inputs
     inputs = sidebar.render()
@@ -431,10 +431,10 @@ def main():
                 current_year=inputs.get("current_year"),
             )
 
-            # Run simulation (historical for pre-retirement, Monte Carlo for retirement)
+            # Run simulation
             st.subheader("Simulation Results")
             st.markdown(
-                "**Using historical data for accumulation phase and Monte Carlo for retirement phase**"
+                "**Hybrid approach: historical data for accumulation phase, Monte Carlo projections for retirement phase**"
             )
 
             with st.spinner("Running simulation..."):

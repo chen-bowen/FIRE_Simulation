@@ -359,9 +359,9 @@ class SidebarComponent:
                 for asset_class in asset_list:
                     slider_key = f"multi_asset_slider_{asset_class}"
                     st.session_state[slider_key] = enabled_assets.get(asset_class, 0.0)
-                    st.session_state.prev_multi_asset_slider_values[asset_class] = (
-                        enabled_assets.get(asset_class, 0.0)
-                    )
+                    st.session_state.prev_multi_asset_slider_values[
+                        asset_class
+                    ] = enabled_assets.get(asset_class, 0.0)
                 st.session_state.multi_asset_sliders_initialized = True
 
             # Ensure all current assets have slider state initialized
@@ -370,9 +370,9 @@ class SidebarComponent:
                 if slider_key not in st.session_state:
                     default_value = enabled_assets.get(asset_class, 0.0)
                     st.session_state[slider_key] = default_value
-                    st.session_state.prev_multi_asset_slider_values[asset_class] = (
-                        default_value
-                    )
+                    st.session_state.prev_multi_asset_slider_values[
+                        asset_class
+                    ] = default_value
 
             # Check if we have target values from proportional adjustment (from previous render)
             target_weights_key = "multi_asset_target_slider_values"

@@ -751,9 +751,9 @@ class ChartComponent:
                                             ** additional_periods
                                         ) - 1
 
-                                    asset_returns_since_rebalance[ac] = (
-                                        cumulative_return
-                                    )
+                                    asset_returns_since_rebalance[
+                                        ac
+                                    ] = cumulative_return
                                 else:
                                     asset_returns_since_rebalance[ac] = 0.0
                             else:
@@ -930,118 +930,6 @@ class ChartComponent:
 
         # Show percentage below chart
         st.caption(f"Total Allocation: {sum(weights_array):.1f}%")
-
-    def plot_comparison_chart(
-        self,
-        historical_result: SimulationResult,
-        mc_result: SimulationResult,
-        current_age: int = None,
-    ) -> None:
-        """Plot comparison between historical and Monte Carlo results.
-
-        Args:
-            historical_result: Historical simulation result
-            mc_result: Monte Carlo simulation result
-            current_age: Current age for age-based x-axis labels (optional)
-        """
-        years_hist = (
-            np.arange(historical_result.horizon_periods)
-            / historical_result.periods_per_year
-        )
-        years_mc = np.arange(mc_result.horizon_periods) / mc_result.periods_per_year
-
-        # Use age if provided, otherwise use years
-        if current_age is not None:
-            x_hist = current_age + years_hist
-            x_mc = current_age + years_mc
-            xaxis_title = "Age"
-        else:
-            x_hist = years_hist
-            x_mc = years_mc
-            xaxis_title = "Years"
-
-        fig = go.Figure()
-
-        # Historical paths
-        fig.add_trace(
-            go.Scatter(
-                x=x_hist,
-                y=historical_result.median_path,
-                name="Historical Median",
-                line=dict(color="#3182bd", dash="solid"),
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=x_hist,
-                y=historical_result.p90_path,
-                name="Historical P90",
-                line=dict(color="#9ecae1", dash="dash"),
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=x_hist,
-                y=historical_result.p10_path,
-                name="Historical P10",
-                line=dict(color="#9ecae1", dash="dash"),
-            )
-        )
-
-        # Monte Carlo paths
-        fig.add_trace(
-            go.Scatter(
-                x=x_mc,
-                y=mc_result.median_path,
-                name="Monte Carlo Median",
-                line=dict(color="#31a354", dash="solid"),
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=x_mc,
-                y=mc_result.p90_path,
-                name="Monte Carlo P90",
-                line=dict(color="#c7e9c0", dash="dash"),
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=x_mc,
-                y=mc_result.p10_path,
-                name="Monte Carlo P10",
-                line=dict(color="#c7e9c0", dash="dash"),
-            )
-        )
-
-        fig.update_layout(
-            title="Historical vs Monte Carlo Comparison",
-            xaxis_title=xaxis_title,
-            yaxis_title="Portfolio Value ($)",
-            hovermode="x unified",
-            showlegend=True,
-        )
-
-        # Format x-axis to show integer values with adaptive tick interval
-        if current_age is not None:
-            max_age_hist = current_age + (
-                historical_result.horizon_periods / historical_result.periods_per_year
-            )
-            max_age_mc = current_age + (
-                mc_result.horizon_periods / mc_result.periods_per_year
-            )
-            max_age = max(max_age_hist, max_age_mc)
-            age_range = max_age - current_age
-            # Adaptive tick interval: 5 years for long ranges, 2-3 for shorter
-            if age_range > 30:
-                dtick = 10
-            elif age_range > 15:
-                dtick = 5
-            else:
-                dtick = 2
-            fig.update_xaxes(tickmode="linear", dtick=dtick)
-
-        st.plotly_chart(fig, use_container_width=True)
 
     def plot_savings_and_returns_breakdown(
         self,
@@ -1257,13 +1145,13 @@ class ChartComponent:
         # Determine simulation type
         if result.data_limited:
             simulation_type = (
-                "Monte Carlo simulation (statistical modeling based on historical data)"
+                "Hybrid simulation (historical accumulation + Monte Carlo retirement)"
             )
             if result.available_years:
-                simulation_type += f" - {result.available_years:.1f} years of historical data available"
+                simulation_type += f" - {result.available_years:.1f} years of historical data used for accumulation"
         else:
             simulation_type = (
-                "Historical simulation (rolling windows of actual market data)"
+                "Hybrid simulation (historical accumulation + Monte Carlo retirement)"
             )
 
         col1, col2 = st.columns(2)

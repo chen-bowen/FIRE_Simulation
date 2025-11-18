@@ -86,9 +86,9 @@ class SimulationParams:
     inflation_rate_annual: float
     frequency: str
     pacing: str = "pro-rata"
-    withdrawal_params: Optional[WithdrawalParams] = (
-        None  # New dynamic withdrawal params
-    )
+    withdrawal_params: Optional[
+        WithdrawalParams
+    ] = None  # New dynamic withdrawal params
     use_wage_based_savings: bool = False  # Use wage growth for contributions
     savings_rate: Optional[float] = None  # Percentage of wage to save (0.0-1.0)
     education_level: Optional[str] = None  # Education level for wage growth
@@ -110,15 +110,15 @@ class SimulationResult:
     requested_periods: Optional[int] = None
     data_limited: bool = False
     available_years: Optional[float] = None
-    sample_paths: Optional[np.ndarray] = (
-        None  # Sample individual paths for visualization
-    )
-    spending_over_time: Optional[np.ndarray] = (
-        None  # Median spending per period (for visualization)
-    )
-    returns_over_time: Optional[np.ndarray] = (
-        None  # Median returns per period (for visualization)
-    )
+    sample_paths: Optional[
+        np.ndarray
+    ] = None  # Sample individual paths for visualization
+    spending_over_time: Optional[
+        np.ndarray
+    ] = None  # Median spending per period (for visualization)
+    returns_over_time: Optional[
+        np.ndarray
+    ] = None  # Median returns per period (for visualization)
     rebalancing_events: Optional[List[str]] = None  # List of rebalancing event messages
 
 

@@ -251,5 +251,4 @@ The app automatically maps modern ETFs to historical equivalents:
 - Annual rebalancing with configurable daily pacing
 - Handles data limitations gracefully with proportional scaling
 - CPI inflation rates are calculated as year-over-year changes: `(CPI_t / CPI_t-1) - 1`
-- Monte Carlo simulations use historical average inflation rate
-- Historical simulations use actual year-by-year CPI inflation rates when available
+- Hybrid simulation: Uses actual year-by-year CPI rates for accumulation phase (when available), historical averages for retirement phase projections
