@@ -13,6 +13,8 @@ Key features:
 - Professional financial chart styling
 """
 
+import math
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
@@ -431,25 +433,14 @@ class ChartComponent:
             return
 
         ppy = result.periods_per_year
-        total_years = int(result.horizon_periods / ppy)
+        total_years = max(1, int(math.ceil(result.horizon_periods / ppy)))
 
         # Aggregate periods into years
         years = []
         annual_spending = []
         annual_returns = []
 
-        # Track virtual balance that grows only with returns (ignoring contributions/spending)
-        # Start from true initial balance if available, otherwise estimate from first period
-        if initial_balance is not None and initial_balance > 0:
-            virtual_balance = initial_balance
-        elif len(result.median_path) > 0 and len(result.returns_over_time) > 0:
-            period_0_return = result.returns_over_time[0]
-            if not np.isnan(period_0_return) and period_0_return > -0.99:
-                virtual_balance = result.median_path[0] / (1.0 + period_0_return)
-            else:
-                virtual_balance = result.median_path[0]
-        else:
-            virtual_balance = 0.0
+        portfolio_depleted = False
 
         for year_idx in range(total_years):
             start_period = year_idx * ppy
@@ -458,15 +449,44 @@ class ChartComponent:
             # Sum spending for the year (spending_over_time is per-period)
             year_spending = np.sum(result.spending_over_time[start_period:end_period])
 
-            # Calculate returns on virtual balance (pure investment gains, no cash flows)
-            year_returns = result.returns_over_time[start_period:end_period]
+            # Convert percentage returns into dollar growth on the median portfolio path
             year_return_dollars = 0.0
 
-            for period_return in year_returns:
-                if not np.isnan(period_return) and period_return > -0.99:
-                    period_return_dollars = virtual_balance * period_return
+            if not portfolio_depleted:
+                year_returns = result.returns_over_time[start_period:end_period]
+                year_balances = result.median_path[start_period:end_period]
+
+                for period_idx, period_return in enumerate(year_returns):
+                    if np.isnan(period_return):
+                        continue
+                    if period_idx >= len(year_balances):
+                        continue
+
+                    balance_after_return = year_balances[period_idx]
+                    if np.isnan(balance_after_return):
+                        continue
+
+                    if balance_after_return <= 0:
+                        # Once the portfolio is depleted, stop counting returns for this and future years
+                        portfolio_depleted = True
+                        year_return_dollars = 0.0
+                        break
+
+                    denom = 1.0 + period_return
+                    if np.isclose(denom, 0.0):
+                        # Skip pathological cases where return is effectively -100%
+                        # to avoid division by zero; values remain uncapped otherwise.
+                        continue
+
+                    # Balance before returns is after contributions/withdrawals but before growth
+                    balance_before_return = balance_after_return / denom
+                    if balance_before_return <= 0:
+                        portfolio_depleted = True
+                        year_return_dollars = 0.0
+                        break
+
+                    period_return_dollars = balance_before_return * period_return
                     year_return_dollars += period_return_dollars
-                    virtual_balance = virtual_balance * (1.0 + period_return)
 
             years.append(current_year + year_idx)
             annual_spending.append(-year_spending)  # Negative for spending
@@ -513,6 +533,7 @@ class ChartComponent:
         )
 
         st.plotly_chart(fig, use_container_width=True)
+        st.caption("Returns reflect investment growth on the median portfolio after each year's " "contributions and withdrawals.")
 
     def plot_terminal_wealth_histogram(
         self,
