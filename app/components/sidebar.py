@@ -366,13 +366,12 @@ class SidebarComponent:
             slider_values = {}
             for asset_class in asset_list:
                 slider_key = f"multi_asset_slider_{asset_class}"
-                # Use .get() with default to avoid KeyError
-                current_value = st.session_state.get(slider_key, enabled_assets.get(asset_class, 0.0))
+                # Use key only - Streamlit will use session state value automatically
+                # (session state is initialized above)
                 slider_value = st.sidebar.slider(
                     f"{asset_class} (%)",
                     min_value=0.0,
                     max_value=100.0,
-                    value=current_value,
                     step=0.5,
                     key=slider_key,
                     disabled=not is_custom_mode,  # Disable if preset is selected
