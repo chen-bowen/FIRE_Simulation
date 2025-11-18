@@ -145,7 +145,7 @@ def main():
         if "portfolio_weights" in st.session_state and st.session_state.portfolio_weights:
             portfolio_weights = {k: v for k, v in st.session_state.portfolio_weights.items() if v > 0}
             if portfolio_weights:
-                fig = sidebar._create_portfolio_pie_chart(portfolio_weights)
+                fig = sidebar._create_portfolio_pie_chart(portfolio_weights, initial_balance=inputs["initial_balance"])
                 # Remove title and adjust layout for better spacing
                 fig.update_layout(
                     title="",  # Remove title since "Portfolio" metric already serves as title
@@ -153,6 +153,9 @@ def main():
                     margin=dict(l=20, r=20, t=0, b=20),  # Minimal margins to bring chart closer to title
                     showlegend=False,  # Hide legend to prevent overlap with text labels
                 )
+                # Update center annotation font size for smaller chart
+                if fig.layout.annotations:
+                    fig.layout.annotations[0].font.size = 12
                 st.plotly_chart(fig, use_container_width=True, key="summary_portfolio_chart")
             else:
                 st.info("No portfolio allocation set")

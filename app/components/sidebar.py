@@ -1,6 +1,6 @@
 """Sidebar component for user inputs."""
 
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import plotly.graph_objects as go
@@ -981,11 +981,12 @@ class SidebarComponent:
 
         return fig
 
-    def _create_portfolio_pie_chart(self, asset_weights: Dict[str, float]) -> go.Figure:
+    def _create_portfolio_pie_chart(self, asset_weights: Dict[str, float], initial_balance: Optional[float] = None) -> go.Figure:
         """Create an interactive pie chart for portfolio allocation.
 
         Args:
             asset_weights: Dictionary mapping asset class names to percentages
+            initial_balance: Optional initial portfolio value to display in center
         """
         # Filter out zero weights
         filtered_weights = {k: v for k, v in asset_weights.items() if v > 0}
@@ -1013,6 +1014,9 @@ class SidebarComponent:
         }
         colors = [color_map.get(label, "#95a5a6") for label in labels]
 
+        # Determine if we should use a donut chart (hole) to show initial balance in center
+        hole_size = 0.4 if initial_balance is not None else 0.0
+
         fig = go.Figure(
             data=[
                 go.Pie(
@@ -1024,9 +1028,20 @@ class SidebarComponent:
                     hovertext=hover_text,
                     pull=[0.05] * len(labels),  # Slight pull for better visibility
                     marker=dict(colors=colors, line=dict(color="#ffffff", width=2)),
+                    hole=hole_size,  # Create donut chart if showing initial balance
                 )
             ]
         )
+
+        # Add initial balance annotation in center if provided
+        if initial_balance is not None:
+            fig.add_annotation(
+                text=f"<b>${initial_balance:,.0f}</b><br>Initial Value",
+                x=0.5,
+                y=0.5,
+                font_size=14,
+                showarrow=False,
+            )
 
         fig.update_layout(
             title="Portfolio Allocation",
