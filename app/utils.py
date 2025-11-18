@@ -107,22 +107,44 @@ def format_percentage(value: float, decimals: int = 1) -> str:
 def calculate_horizon_years(
     current_age: int, retire_age: int, plan_until_age: int
 ) -> Tuple[int, int]:
-    """Calculate working and retirement years."""
+    """Calculate working and retirement years.
+    
+    Supports both pre-retirement and already-retired scenarios:
+    - Pre-retirement: pre_retire_years = retire_age - current_age, retire_years = plan_until_age - retire_age
+    - Already retired: pre_retire_years = 0, retire_years = plan_until_age - current_age
+    """
     pre_retire_years = max(0, retire_age - current_age)
-    retire_years = max(1, plan_until_age - retire_age)
+    
+    # If already retired, retirement years is from current_age to plan_until_age
+    if pre_retire_years == 0:
+        retire_years = max(1, plan_until_age - current_age)
+    else:
+        retire_years = max(1, plan_until_age - retire_age)
+    
     return pre_retire_years, retire_years
 
 
 def validate_age_inputs(current_age: int, retire_age: int, plan_until_age: int) -> None:
-    """Validate age inputs."""
+    """Validate age inputs.
+    
+    Supports both pre-retirement and already-retired scenarios:
+    - Pre-retirement: current_age < retire_age < plan_until_age
+    - Already retired: current_age >= retire_age, plan_until_age > current_age
+    """
     if current_age < 0 or retire_age < 0 or plan_until_age < 0:
         raise ValidationError("Ages must be non-negative")
 
-    if retire_age <= current_age:
-        raise ValidationError("Retirement age must be greater than current age")
-
-    if plan_until_age <= retire_age:
-        raise ValidationError("Plan until age must be greater than retirement age")
+    # Check if already retired
+    is_already_retired = retire_age <= current_age
+    
+    if is_already_retired:
+        # For already retired, plan_until_age must be greater than current_age
+        if plan_until_age <= current_age:
+            raise ValidationError("Plan until age must be greater than current age (you are already retired)")
+    else:
+        # For pre-retirement, standard validation applies
+        if plan_until_age <= retire_age:
+            raise ValidationError("Plan until age must be greater than retirement age")
 
 
 def validate_financial_inputs(

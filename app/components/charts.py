@@ -354,9 +354,9 @@ class ChartComponent:
             )
         )
 
-        # Add retirement line if pre_retire_years is provided
+        # Add retirement line if pre_retire_years is provided and > 0 (not already retired)
         retire_x = None
-        if pre_retire_years is not None:
+        if pre_retire_years is not None and pre_retire_years > 0:
             if current_year is not None:
                 retire_x = current_year + pre_retire_years
             elif current_age is not None:
@@ -390,8 +390,8 @@ class ChartComponent:
 
             # Find when median portfolio first reaches the threshold (during accumulation phase only)
             can_retire_idx = None
-            if pre_retire_years is not None:
-                # Only check during accumulation phase
+            if pre_retire_years is not None and pre_retire_years > 0:
+                # Only check during accumulation phase (skip if already retired)
                 max_accumulation_periods = int(pre_retire_years * result.periods_per_year)
                 accumulation_path = result.median_path[:max_accumulation_periods]
                 # Find first index where portfolio >= threshold
@@ -400,14 +400,16 @@ class ChartComponent:
                     can_retire_idx = threshold_reached[0]
 
             # Add horizontal line for retirement threshold
+            # Format threshold with better description explaining the 4% rule
+            threshold_label = f"Retirement Threshold: ${retirement_threshold:,.0f}\n(25× annual spending = 4% withdrawal rate)"
             fig.add_hline(
                 y=retirement_threshold,
                 line_dash="dot",
                 line_color="#f39c12",
                 line_width=1.5,
-                annotation_text=f"Threshold: ${retirement_threshold:,.0f}",
+                annotation_text=threshold_label,
                 annotation_position="top left",
-                annotation=dict(font_size=11, font_color="#f39c12"),
+                annotation=dict(font_size=10, font_color="#f39c12"),
             )
 
             # Add marker showing when threshold is first reached
@@ -790,7 +792,11 @@ class ChartComponent:
 
         # Determine phase
         if pre_retire_years is not None:
-            is_accumulation = selected_year <= pre_retire_years
+            # If pre_retire_years is 0, user is already retired, so all years are retirement phase
+            if pre_retire_years == 0:
+                is_accumulation = False
+            else:
+                is_accumulation = selected_year <= pre_retire_years
             phase = "Accumulation Phase" if is_accumulation else "Retirement Phase"
             phase_color = "green" if is_accumulation else "red"
         else:

@@ -653,15 +653,21 @@ class SidebarComponent:
                     # Store current education level in session state
                     st.session_state.current_education_level = education_level if education_level else None
 
-                    # Wage-based savings option (only if education level is selected)
+                    # Wage-based savings option (only if education level is selected and not already retired)
                     if education_level:
                         st.markdown("---")
                         st.markdown("**Wage-Based Savings**")
+                        # Check if already retired (need to check this before the checkbox)
+                        is_already_retired_check = retire_age <= current_age
                         use_wage_based_savings = st.checkbox(
                             "Use wage-based savings",
-                            value=st.session_state.use_wage_based_savings,
-                            help="Calculate annual savings as a percentage of your wage, which grows over time based on your education level",
+                            value=st.session_state.use_wage_based_savings if not is_already_retired_check else False,
+                            disabled=is_already_retired_check,
+                            help="Calculate annual savings as a percentage of your wage, which grows over time based on your education level"
+                            + (" (disabled - you are already retired)" if is_already_retired_check else ""),
                         )
+                        if is_already_retired_check:
+                            use_wage_based_savings = False
                         st.session_state.use_wage_based_savings = use_wage_based_savings
 
                         if use_wage_based_savings:
@@ -738,8 +744,11 @@ class SidebarComponent:
                 annual_spend = 0.0
             st.sidebar.caption(f"💵 ${annual_spend:,.0f}")
 
-        # Show annual contribution input if NOT using wage-based savings
-        if not use_wage_based_savings:
+        # Check if already retired
+        is_already_retired = retire_age <= current_age
+
+        # Show annual contribution input if NOT using wage-based savings AND NOT already retired
+        if not use_wage_based_savings and not is_already_retired:
             annual_contrib_str = st.sidebar.text_input(
                 "Annual savings before retirement ($)",
                 value=str(int(self.config.default_annual_contrib)),
@@ -751,8 +760,10 @@ class SidebarComponent:
                 annual_contrib = 0.0
             st.sidebar.caption(f"💵 ${annual_contrib:,.0f}")
         else:
-            # Set a placeholder value, actual contributions will be calculated from wage
+            # Set a placeholder value - either wage-based savings or already retired
             annual_contrib = 0.0
+            if is_already_retired:
+                st.sidebar.info("ℹ️ You are already retired - no savings contributions will be applied.")
 
         # ===== ADVANCED SETTINGS (In Expander) =====
         with st.sidebar.expander("⚙️ Advanced Settings", expanded=False):
@@ -910,15 +921,23 @@ class SidebarComponent:
         return tickers, weights_array
 
     def validate_inputs(self, inputs: dict) -> None:
-        """Validate user inputs."""
-        # Basic validation
-        if inputs["retire_age"] <= inputs["current_age"]:
-            st.error("Retirement age must be greater than current age")
-            st.stop()
+        """Validate user inputs.
 
-        if inputs["plan_until_age"] <= inputs["retire_age"]:
-            st.error("Plan until age must be greater than retirement age")
-            st.stop()
+        Supports both pre-retirement and already-retired scenarios.
+        """
+        # Check if already retired
+        is_already_retired = inputs["retire_age"] <= inputs["current_age"]
+
+        if is_already_retired:
+            # For already retired, plan_until_age must be greater than current_age
+            if inputs["plan_until_age"] <= inputs["current_age"]:
+                st.error("Plan until age must be greater than current age (you are already retired)")
+                st.stop()
+        else:
+            # For pre-retirement, standard validation applies
+            if inputs["plan_until_age"] <= inputs["retire_age"]:
+                st.error("Plan until age must be greater than retirement age")
+                st.stop()
 
         if len(inputs["tickers"]) == 0:
             st.error("At least one ticker must be provided")

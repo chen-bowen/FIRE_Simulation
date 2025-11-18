@@ -83,11 +83,18 @@ def main():
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric(
-            "Years to Retirement",
-            f"{pre_retire_years:,}",
-            help="Years until retirement age",
-        )
+        if pre_retire_years == 0:
+            st.metric(
+                "Years to Retirement",
+                "Already Retired",
+                help="You are already retired - simulation starts from retirement phase",
+            )
+        else:
+            st.metric(
+                "Years to Retirement",
+                f"{pre_retire_years:,}",
+                help="Years until retirement age",
+            )
 
     with col2:
         st.metric(

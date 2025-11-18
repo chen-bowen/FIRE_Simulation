@@ -246,6 +246,14 @@ The app automatically maps modern ETFs to historical equivalents:
 3. Enter savings and spending amounts
 4. Click "Run Simulation" to see results
 
+### Retirement Phase Only (Already Retired)
+
+The app supports users who are already retired:
+- Set **Retirement age** to be less than or equal to **Current age**
+- The simulation will skip the accumulation phase and start directly with retirement withdrawals
+- Annual savings contributions are automatically disabled (not applicable for already-retired users)
+- All simulation periods will be treated as retirement phase with withdrawals
+
 ### Dynamic Withdrawal Mode
 
 1. Enable "Use dynamic withdrawal (CPI-adjusted)" checkbox
