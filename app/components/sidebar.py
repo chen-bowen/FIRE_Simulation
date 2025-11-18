@@ -277,9 +277,9 @@ class SidebarComponent:
                     asset_class in st.session_state.portfolio_weights and st.session_state.portfolio_weights[asset_class] > 0
                 )
 
+            # Use key only - Streamlit will use session state value automatically
             is_enabled = st.sidebar.checkbox(
                 asset_class,
-                value=st.session_state[checkbox_key],
                 key=checkbox_key,
                 disabled=not is_custom_mode,  # Disable checkboxes if preset is selected
             )
