@@ -188,11 +188,16 @@ class SidebarComponent:
 
         # Financial inputs
         st.sidebar.subheader("Savings & Spending")
-        initial_balance = st.sidebar.number_input(
+        initial_balance_str = st.sidebar.text_input(
             "Current savings ($)",
-            value=self.config.default_initial_balance,
-            step=10000.0,
+            value=str(int(self.config.default_initial_balance)),
+            help="Enter amount (e.g., 200000)",
         )
+        try:
+            initial_balance = float(initial_balance_str.replace(",", "").replace("$", "").strip()) if initial_balance_str.strip() else 0.0
+        except ValueError:
+            initial_balance = 0.0
+        st.sidebar.caption(f"💵 ${initial_balance:,.0f}")
 
         # Initialize wage-based savings toggle in session state
         if "use_wage_based_savings" not in st.session_state:
@@ -509,12 +514,20 @@ class SidebarComponent:
             # Dynamic withdrawal settings in expander
             with st.sidebar.expander("Dynamic Withdrawal Settings", expanded=True):
                 # Total annual expense
-                total_annual_expense = st.number_input(
+                total_annual_expense_str = st.text_input(
                     "Total annual retirement spending ($)",
-                    value=self.config.default_annual_spend,
-                    step=1000.0,
-                    min_value=0.0,
+                    value=str(int(self.config.default_annual_spend)),
+                    help="Enter amount (e.g., 75000)",
                 )
+                try:
+                    total_annual_expense = (
+                        float(total_annual_expense_str.replace(",", "").replace("$", "").strip())
+                        if total_annual_expense_str.strip()
+                        else 0.0
+                    )
+                except ValueError:
+                    total_annual_expense = 0.0
+                st.caption(f"💵 ${total_annual_expense:,.0f}")
 
                 # Expense category preset selection
                 preset_options = list(self.EXPENSE_PRESETS.keys()) + ["Custom"]
@@ -589,13 +602,19 @@ class SidebarComponent:
                 education_level = ""
                 with st.expander("Income & Education (Optional)", expanded=False):
                     st.caption("For future wage growth calculations")
-                    current_wage = st.number_input(
+                    current_wage_str = st.text_input(
                         "Current annual wage/salary ($)",
-                        value=0.0,
-                        step=1000.0,
-                        min_value=0.0,
-                        help="Your current annual income (optional)",
+                        value="0",
+                        help="Enter amount (e.g., 50000). Optional.",
                     )
+                    try:
+                        current_wage = (
+                            float(current_wage_str.replace(",", "").replace("$", "").strip()) if current_wage_str.strip() else 0.0
+                        )
+                    except ValueError:
+                        current_wage = 0.0
+                    if current_wage > 0:
+                        st.caption(f"💵 ${current_wage:,.0f}")
 
                     # Get current education level from session state if available
                     current_education_index = 0
@@ -708,20 +727,29 @@ class SidebarComponent:
 
         else:
             # Traditional fixed annual spending
-            annual_spend = st.sidebar.number_input(
+            annual_spend_str = st.sidebar.text_input(
                 "Annual retirement spending ($)",
-                value=self.config.default_annual_spend,
-                step=1000.0,
+                value=str(int(self.config.default_annual_spend)),
+                help="Enter amount (e.g., 75000)",
             )
+            try:
+                annual_spend = float(annual_spend_str.replace(",", "").replace("$", "").strip()) if annual_spend_str.strip() else 0.0
+            except ValueError:
+                annual_spend = 0.0
+            st.sidebar.caption(f"💵 ${annual_spend:,.0f}")
 
         # Show annual contribution input if NOT using wage-based savings
         if not use_wage_based_savings:
-            annual_contrib = st.sidebar.number_input(
+            annual_contrib_str = st.sidebar.text_input(
                 "Annual savings before retirement ($)",
-                value=self.config.default_annual_contrib,
-                step=1000.0,
-                help="Fixed annual contribution amount (ignored if wage-based savings is enabled)",
+                value=str(int(self.config.default_annual_contrib)),
+                help="Enter amount (e.g., 10000). Fixed annual contribution amount (ignored if wage-based savings is enabled).",
             )
+            try:
+                annual_contrib = float(annual_contrib_str.replace(",", "").replace("$", "").strip()) if annual_contrib_str.strip() else 0.0
+            except ValueError:
+                annual_contrib = 0.0
+            st.sidebar.caption(f"💵 ${annual_contrib:,.0f}")
         else:
             # Set a placeholder value, actual contributions will be calculated from wage
             annual_contrib = 0.0

@@ -146,6 +146,8 @@ class ChartComponent:
         current_age: int = None,
         current_year: int = None,
         initial_balance: float = None,
+        pre_retire_years: int = None,
+        annual_spend: float = None,
     ) -> None:
         """Plot interactive portfolio chart with controls for metric type and chart type.
 
@@ -154,6 +156,9 @@ class ChartComponent:
             title: Chart title
             current_age: Current age for age-based x-axis labels (optional)
             current_year: Current year for calendar year x-axis labels (optional)
+            initial_balance: Initial portfolio balance (optional)
+            pre_retire_years: Number of years until retirement (optional)
+            annual_spend: Annual retirement spending amount (optional)
         """
         from datetime import datetime
 
@@ -186,7 +191,7 @@ class ChartComponent:
             # Render appropriate chart based on selections
             if chart_type == "Min/Max/Mean":
                 if metric_type == "Portfolio":
-                    self._plot_portfolio_quantiles(result, title, current_age, current_year)
+                    self._plot_portfolio_quantiles(result, title, current_age, current_year, pre_retire_years, annual_spend)
                 else:  # Spending
                     self._plot_spending_quantiles(result, "Spending Quantiles", current_age, current_year)
             else:  # Spending vs Returns
@@ -206,6 +211,8 @@ class ChartComponent:
         title: str,
         current_age: int = None,
         current_year: int = None,
+        pre_retire_years: int = None,
+        annual_spend: float = None,
     ) -> None:
         """Plot portfolio quantiles with shaded bands (Min/Max/Mean view).
 
@@ -214,6 +221,8 @@ class ChartComponent:
             title: Chart title
             current_age: Current age for age-based x-axis labels (optional)
             current_year: Current year for calendar year x-axis labels (optional)
+            pre_retire_years: Number of years until retirement (optional)
+            annual_spend: Annual retirement spending amount (optional)
         """
         from datetime import datetime
 
@@ -300,7 +309,7 @@ class ChartComponent:
                 y=result.p90_path,
                 name="P90",
                 line=dict(color="#1abc9c", width=1.5, dash="dash"),
-                showlegend=True,
+                showlegend=False,
                 hovertemplate="P90: $%{y:,.0f}<extra></extra>",
             )
         )
@@ -310,7 +319,7 @@ class ChartComponent:
                 y=p75,
                 name="P75",
                 line=dict(color="#1abc9c", width=1.5, dash="dash"),
-                showlegend=True,
+                showlegend=False,
                 hovertemplate="P75: $%{y:,.0f}<extra></extra>",
             )
         )
@@ -320,7 +329,7 @@ class ChartComponent:
                 y=result.median_path,
                 name="Median",
                 line=dict(color="#1abc9c", width=2.5),
-                showlegend=True,
+                showlegend=False,
                 hovertemplate="Median: $%{y:,.0f}<extra></extra>",
             )
         )
@@ -330,7 +339,7 @@ class ChartComponent:
                 y=p25,
                 name="P25",
                 line=dict(color="#1abc9c", width=1.5, dash="dash"),
-                showlegend=True,
+                showlegend=False,
                 hovertemplate="P25: $%{y:,.0f}<extra></extra>",
             )
         )
@@ -340,10 +349,146 @@ class ChartComponent:
                 y=result.p10_path,
                 name="P10",
                 line=dict(color="#1abc9c", width=1.5, dash="dash"),
-                showlegend=True,
+                showlegend=False,
                 hovertemplate="P10: $%{y:,.0f}<extra></extra>",
             )
         )
+
+        # Add retirement line if pre_retire_years is provided
+        retire_x = None
+        if pre_retire_years is not None:
+            if current_year is not None:
+                retire_x = current_year + pre_retire_years
+            elif current_age is not None:
+                retire_x = current_age + pre_retire_years
+            else:
+                retire_x = pre_retire_years
+
+            # Calculate retirement age for annotation
+            if current_age is not None:
+                retire_age = int(current_age + pre_retire_years)
+                retirement_annotation = f"Planned: Age {retire_age}"
+            else:
+                retirement_annotation = "Planned Retirement"
+
+            # Only add line if retirement is within the simulation period
+            if retire_x >= x[0] and retire_x <= x[-1]:
+                fig.add_vline(
+                    x=retire_x,
+                    line_dash="dash",
+                    line_color="#e74c3c",
+                    line_width=2,
+                    annotation_text=retirement_annotation,
+                    annotation_position="top",
+                    annotation=dict(font_size=10, font_color="#e74c3c", yshift=10),
+                )
+
+        # Add "can retire" threshold and indicator if annual_spend is provided
+        if annual_spend is not None and annual_spend > 0:
+            # Calculate retirement threshold: 25x annual spending (4% rule)
+            retirement_threshold = annual_spend * 25
+
+            # Find when median portfolio first reaches the threshold (during accumulation phase only)
+            can_retire_idx = None
+            if pre_retire_years is not None:
+                # Only check during accumulation phase
+                max_accumulation_periods = int(pre_retire_years * result.periods_per_year)
+                accumulation_path = result.median_path[:max_accumulation_periods]
+                # Find first index where portfolio >= threshold
+                threshold_reached = np.where(accumulation_path >= retirement_threshold)[0]
+                if len(threshold_reached) > 0:
+                    can_retire_idx = threshold_reached[0]
+
+            # Add horizontal line for retirement threshold
+            fig.add_hline(
+                y=retirement_threshold,
+                line_dash="dot",
+                line_color="#f39c12",
+                line_width=1.5,
+                annotation_text=f"Threshold: ${retirement_threshold:,.0f}",
+                annotation_position="top left",
+                annotation=dict(font_size=11, font_color="#f39c12"),
+            )
+
+            # Add marker showing when threshold is first reached
+            if can_retire_idx is not None and can_retire_idx < len(x):
+                can_retire_x = x[can_retire_idx]
+                can_retire_y = result.median_path[can_retire_idx]
+
+                # Calculate age at "can retire" point
+                if current_age is not None:
+                    if current_year is not None:
+                        # X-axis is in years, calculate age
+                        can_retire_age = int(current_age + (can_retire_x - current_year))
+                    elif xaxis_title == "Age":
+                        # X-axis is already in age
+                        can_retire_age = int(can_retire_x)
+                    else:
+                        # X-axis is in years from start
+                        can_retire_age = int(current_age + can_retire_x)
+                else:
+                    can_retire_age = None
+
+                # Format annotation text with age
+                if can_retire_age is not None:
+                    annotation_text = f"Age {can_retire_age}"
+                    hover_text = f"Can Retire at Age {can_retire_age}<br>Year: {can_retire_x:.0f}<br>Portfolio: ${can_retire_y:,.0f}"
+                else:
+                    annotation_text = f"Can Retire"
+                    hover_text = f"Can Retire: {can_retire_x:.0f}<br>Portfolio: ${can_retire_y:,.0f}"
+
+                # Position annotation to avoid overlap with planned retirement
+                # Check if lines are very close (within 5 years) and adjust positioning
+                x_range = x[-1] - x[0]
+                lines_very_close = False
+                if retire_x is not None:
+                    x_diff = abs(can_retire_x - retire_x)
+                    # Check if within 5% of chart width or 5 years, whichever is smaller
+                    lines_very_close = x_diff < min(x_range * 0.05, 5)
+
+                if lines_very_close:
+                    # Lines are very close - use left/right positioning to avoid overlap
+                    if can_retire_x < retire_x:
+                        # Can retire is before planned, put annotation on left side
+                        annotation_pos = "left"
+                        annotation_shift = dict(font_size=10, font_color="#f39c12", xshift=-15)
+                    else:
+                        # Can retire is after planned, put annotation on right side
+                        annotation_pos = "right"
+                        annotation_shift = dict(font_size=10, font_color="#f39c12", xshift=15)
+                else:
+                    # Lines are far enough apart, use top position like planned retirement
+                    annotation_pos = "top"
+                    annotation_shift = dict(font_size=10, font_color="#f39c12", yshift=10)
+
+                # Add vertical line at "can retire" point
+                fig.add_vline(
+                    x=can_retire_x,
+                    line_dash="dot",
+                    line_color="#f39c12",
+                    line_width=2,
+                    annotation_text=annotation_text,
+                    annotation_position=annotation_pos,
+                    annotation=annotation_shift,
+                )
+
+                # Add marker point
+                fig.add_trace(
+                    go.Scatter(
+                        x=[can_retire_x],
+                        y=[can_retire_y],
+                        mode="markers",
+                        marker=dict(
+                            symbol="star",
+                            size=15,
+                            color="#f39c12",
+                            line=dict(color="#e67e22", width=2),
+                        ),
+                        name="Can Retire",
+                        showlegend=True,
+                        hovertemplate=f"{hover_text}<extra></extra>",
+                    )
+                )
 
         fig.update_layout(
             title=title,
