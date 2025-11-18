@@ -27,12 +27,22 @@ A comprehensive retirement planning application that combines historical market 
   - Total annual expense + category percentages
   - Dollar amounts per category
 
+### Visualization Features
+
+- **Portfolio Quantiles Chart**: Interactive chart showing portfolio value projections over time
+  - Displays percentile bands (P10, P25, Median, P75, P90) with shaded confidence intervals
+  - Quantile lines are visible on the chart but hidden from the legend for a cleaner interface
+  - Retirement threshold line with label positioned in the top-left corner
+  - "Can Retire" marker shows when the median portfolio value first reaches the retirement threshold
+  - Age and planned retirement markers for easy reference
+- **Interactive charts** for portfolio paths, spending analysis, and terminal wealth distribution
+- **Multiple chart views**: Toggle between portfolio quantiles, spending quantiles, and spending vs returns breakdown
+
 ### Additional Features
 
 - **Daily/Monthly** return frequency toggle
 - **Smart data fetching** with historical backfill (SPY→^GSPC, VTI→VTSMX, etc.)
 - **Education & Wage Tracking**: Input education level and current wage for future wage growth calculations
-- **Interactive charts** for portfolio paths and terminal wealth distribution
 - **Modular architecture** with proper separation of concerns
 - **Type safety** and comprehensive error handling
 
