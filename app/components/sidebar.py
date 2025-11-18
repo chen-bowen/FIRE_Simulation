@@ -154,10 +154,10 @@ class SidebarComponent:
             "VXUS",
         ],  # Prefer ^EFA for longer history, VEA/VXUS for ETFs
         "Bonds": [
-            "^TNX",
-            "AGG",
             "BND",
-        ],  # Prefer ^TNX for longer history, AGG/BND for ETFs
+            "AGG",
+            "VBMFX",
+        ],  # Use BND (bond ETF) which maps to VBMFX historically; ^TNX removed (yield index, not bond prices)
         "Cash": [
             "^IRX",
             "SHV",
@@ -849,17 +849,22 @@ class SidebarComponent:
             ticker_options = self.ASSET_CLASSES[asset_class]
 
             # Prefer index tickers (starting with ^) for longer history
+            # EXCEPT for Bonds - prefer ETFs over yield indices (^TNX)
             # Fall back to ETF tickers if needed
             selected_ticker = None
-            for ticker in ticker_options:
-                # Prefer index tickers (^GSPC, ^TNX, etc.) for longer history
-                if ticker.startswith("^"):
-                    selected_ticker = ticker
-                    break
-
-            # If no index ticker found, use first ETF ticker
-            if selected_ticker is None and ticker_options:
-                selected_ticker = ticker_options[0]
+            if asset_class == "Bonds":
+                # For bonds, use first ticker (BND) - don't prefer ^TNX (yield index)
+                if ticker_options:
+                    selected_ticker = ticker_options[0]
+            else:
+                # For other assets, prefer index tickers (^GSPC, etc.) for longer history
+                for ticker in ticker_options:
+                    if ticker.startswith("^"):
+                        selected_ticker = ticker
+                        break
+                # If no index ticker found, use first ETF ticker
+                if selected_ticker is None and ticker_options:
+                    selected_ticker = ticker_options[0]
 
             if selected_ticker:
                 tickers.append(selected_ticker)
