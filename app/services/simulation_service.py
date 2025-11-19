@@ -51,7 +51,9 @@ class SimulationService:
         """Check if a ticker is a crypto asset."""
         return self.data_service.is_crypto_ticker(ticker)
 
-    def _cap_crypto_normal_returns(self, returns: np.ndarray, tickers: List[str], frequency: str) -> np.ndarray:
+    def _cap_crypto_normal_returns(
+        self, returns: np.ndarray, tickers: List[str], frequency: str
+    ) -> np.ndarray:
         """Cap normal crypto returns per period to prevent unrealistic compounding.
 
         Args:
@@ -66,7 +68,11 @@ class SimulationService:
             return returns
 
         config = get_config()
-        max_return = config.crypto_max_daily_return if frequency == "daily" else config.crypto_max_monthly_return
+        max_return = (
+            config.crypto_max_daily_return
+            if frequency == "daily"
+            else config.crypto_max_monthly_return
+        )
 
         # Handle both 1D and 2D arrays
         if returns.ndim == 1:
@@ -174,18 +180,25 @@ class SimulationService:
         config = get_config()
 
         # Only apply dampening if projecting beyond available data
-        if projection_years <= available_years or available_years < config.crypto_min_data_years:
+        if (
+            projection_years <= available_years
+            or available_years < config.crypto_min_data_years
+        ):
             return cov
 
         years_beyond = projection_years - available_years
         # Calculate dampening factor (max 50% reduction)
-        dampening_factor = min(0.5, years_beyond * config.crypto_volatility_dampening / projection_years)
+        dampening_factor = min(
+            0.5, years_beyond * config.crypto_volatility_dampening / projection_years
+        )
 
         # Create adjusted covariance matrix
         adjusted_cov = cov.copy()
 
         # Find crypto asset indices
-        crypto_indices = [i for i, ticker in enumerate(tickers) if self._is_crypto_asset(ticker)]
+        crypto_indices = [
+            i for i, ticker in enumerate(tickers) if self._is_crypto_asset(ticker)
+        ]
 
         # Apply dampening to crypto variance (diagonal) and covariance (off-diagonal)
         for i in crypto_indices:
@@ -246,7 +259,9 @@ class SimulationService:
                 cov = np.cov(log_returns.T)
 
             # Apply volatility dampening for crypto if projecting beyond available data
-            cov = self._apply_volatility_dampening(cov, tickers, available_years, projection_years)
+            cov = self._apply_volatility_dampening(
+                cov, tickers, available_years, projection_years
+            )
 
             L = self._safe_cholesky(cov)
 
@@ -255,8 +270,10 @@ class SimulationService:
             avg_category_inflation_rates: Optional[Dict[str, float]] = None
 
             if use_dynamic_withdrawal:
-                initial_category_spending = self.portfolio_service.calculate_initial_category_spending(
-                    params.withdrawal_params, self.data_service
+                initial_category_spending = (
+                    self.portfolio_service.calculate_initial_category_spending(
+                        params.withdrawal_params, self.data_service
+                    )
                 )
 
                 # Load average category-specific inflation rates if CPI adjustment is enabled
@@ -264,7 +281,11 @@ class SimulationService:
                     avg_category_inflation_rates = {}
                     for category_name in initial_category_spending.keys():
                         try:
-                            avg_rate = self.data_service.get_average_category_inflation_rate(category_name)
+                            avg_rate = (
+                                self.data_service.get_average_category_inflation_rate(
+                                    category_name
+                                )
+                            )
                             if avg_rate is not None:
                                 avg_category_inflation_rates[category_name] = avg_rate
                         except Exception:
@@ -297,13 +318,20 @@ class SimulationService:
                     retire_age,
                 )
                 if weekly_wage_at_retirement:
-                    annual_wage_at_retirement = self.data_service.get_annual_wage(weekly_wage_at_retirement)
+                    annual_wage_at_retirement = self.data_service.get_annual_wage(
+                        weekly_wage_at_retirement
+                    )
 
                     # Estimate pre-retirement spending (using final year's savings rate)
                     # For age-based profiles, use the rate at retirement age; for fixed, use the fixed rate
                     if params.savings_rate_profile:
-                        savings_rate_at_retirement = params.savings_rate_profile.get_rate_for_age(retire_age)
-                        if savings_rate_at_retirement is None and params.savings_rate is not None:
+                        savings_rate_at_retirement = (
+                            params.savings_rate_profile.get_rate_for_age(retire_age)
+                        )
+                        if (
+                            savings_rate_at_retirement is None
+                            and params.savings_rate is not None
+                        ):
                             savings_rate_at_retirement = params.savings_rate
                         elif savings_rate_at_retirement is None:
                             savings_rate_at_retirement = 0.15  # Default fallback
@@ -313,29 +341,50 @@ class SimulationService:
                         savings_rate_at_retirement = 0.15  # Default fallback
 
                     # Pre-retirement spending = income - savings
-                    estimated_pre_retire_spending = annual_wage_at_retirement * (1.0 - savings_rate_at_retirement)
+                    estimated_pre_retire_spending = annual_wage_at_retirement * (
+                        1.0 - savings_rate_at_retirement
+                    )
 
                     # Retirement spending = pre-retirement spending * replacement_ratio
-                    replacement_ratio = params.replacement_ratio if params.replacement_ratio is not None else 0.80
-                    wage_based_spending = estimated_pre_retire_spending * replacement_ratio
+                    replacement_ratio = (
+                        params.replacement_ratio
+                        if params.replacement_ratio is not None
+                        else 0.80
+                    )
+                    wage_based_spending = (
+                        estimated_pre_retire_spending * replacement_ratio
+                    )
 
                     # Update total_annual_spend
                     if use_dynamic_withdrawal:
                         # Update withdrawal_params total while preserving categories
-                        params.withdrawal_params.total_annual_expense = wage_based_spending
+                        params.withdrawal_params.total_annual_expense = (
+                            wage_based_spending
+                        )
                         total_annual_spend = wage_based_spending
                     else:
                         total_annual_spend = wage_based_spending
                 else:
                     # Fallback to original spending if wage calculation fails
-                    total_annual_spend = sum(initial_category_spending.values()) if use_dynamic_withdrawal else params.annual_spend
+                    total_annual_spend = (
+                        sum(initial_category_spending.values())
+                        if use_dynamic_withdrawal
+                        else params.annual_spend
+                    )
             else:
                 # Determine total annual spending
-                total_annual_spend = sum(initial_category_spending.values()) if use_dynamic_withdrawal else params.annual_spend
+                total_annual_spend = (
+                    sum(initial_category_spending.values())
+                    if use_dynamic_withdrawal
+                    else params.annual_spend
+                )
 
             # Calculate period amounts (contributions may be wage-based)
             # Check if we have savings_rate_profile or fixed savings_rate
-            has_savings_rate = params.savings_rate is not None or params.savings_rate_profile is not None
+            has_savings_rate = (
+                params.savings_rate is not None
+                or params.savings_rate_profile is not None
+            )
             use_wage_based = (
                 params.use_wage_based_savings
                 and params.education_level
@@ -358,13 +407,21 @@ class SimulationService:
                         target_age,
                     )
                     if weekly_wage is None:
-                        weekly_wage = self.data_service.get_income_for_education_level(params.education_level)
+                        weekly_wage = self.data_service.get_income_for_education_level(
+                            params.education_level
+                        )
                         if weekly_wage is None:
                             break
-                        growth_rate = self.data_service.calculate_wage_growth_rate(params.education_level)
+                        growth_rate = self.data_service.calculate_wage_growth_rate(
+                            params.education_level
+                        )
                         if growth_rate:
-                            weekly_wage = weekly_wage * ((1.0 + growth_rate) ** year_offset)
-                    annual_wages_by_year[target_year] = self.data_service.get_annual_wage(weekly_wage)
+                            weekly_wage = weekly_wage * (
+                                (1.0 + growth_rate) ** year_offset
+                            )
+                    annual_wages_by_year[
+                        target_year
+                    ] = self.data_service.get_annual_wage(weekly_wage)
 
                     # Cache savings rate for this age
                     if params.savings_rate_profile:
@@ -381,9 +438,13 @@ class SimulationService:
                         savings_rates_by_age[target_age] = 0.0
                 contrib_pp = None  # Will be calculated dynamically using cached wages
             else:
-                contrib_pp, _ = self.portfolio_service.calculate_period_amounts(params.annual_contrib, 0.0, params.frequency)
+                contrib_pp, _ = self.portfolio_service.calculate_period_amounts(
+                    params.annual_contrib, 0.0, params.frequency
+                )
 
-            spend_pp_nominal_year1 = self.portfolio_service.calculate_period_amounts(0.0, total_annual_spend, params.frequency)[1]
+            spend_pp_nominal_year1 = self.portfolio_service.calculate_period_amounts(
+                0.0, total_annual_spend, params.frequency
+            )[1]
 
             avg_inflation_rate = params.inflation_rate_annual
             try:
@@ -391,7 +452,9 @@ class SimulationService:
             except Exception:
                 avg_inflation_rate = params.inflation_rate_annual
 
-            inflation_pp = self.portfolio_service.calculate_inflation_factor(avg_inflation_rate, params.frequency)
+            inflation_pp = self.portfolio_service.calculate_inflation_factor(
+                avg_inflation_rate, params.frequency
+            )
 
             balances_over_time: List[np.ndarray] = []
             spending_over_time: List[np.ndarray] = []
@@ -399,8 +462,12 @@ class SimulationService:
             terminal_balances: List[float] = []
             success_count = 0
             rebalancing_events: List[str] = []
-            pre_retire_spending_paths: List[np.ndarray] = []  # Track pre-retirement spending per path
-            earliest_retirement_ages: List[Optional[float]] = []  # Track earliest retirement age per path
+            pre_retire_spending_paths: List[
+                np.ndarray
+            ] = []  # Track pre-retirement spending per path
+            earliest_retirement_ages: List[
+                Optional[float]
+            ] = []  # Track earliest retirement age per path
 
             for path_idx in range(n_paths):
                 state = PortfolioState(balance=params.initial_balance, weights=weights)
@@ -427,25 +494,42 @@ class SimulationService:
                 mc_arith_returns = np.expm1(mc_log_returns)
 
                 # Apply crypto handling to Monte Carlo returns
-                mc_arith_returns = self._cap_crypto_normal_returns(mc_arith_returns, tickers, params.frequency)
-                mc_arith_returns = self._inject_extreme_volatility_events(mc_arith_returns, tickers, params.frequency, rng)
+                mc_arith_returns = self._cap_crypto_normal_returns(
+                    mc_arith_returns, tickers, params.frequency
+                )
+                mc_arith_returns = self._inject_extreme_volatility_events(
+                    mc_arith_returns, tickers, params.frequency, rng
+                )
 
                 # Build full sequence of portfolio returns
-                full_asset_returns = np.vstack([hist_block, mc_arith_returns]) if hist_block.shape[0] > 0 else mc_arith_returns
+                full_asset_returns = (
+                    np.vstack([hist_block, mc_arith_returns])
+                    if hist_block.shape[0] > 0
+                    else mc_arith_returns
+                )
 
                 # Step through accumulation (no spending) and retirement (spending)
                 spend_pp = spend_pp_nominal_year1
-                pre_retire_spending = np.zeros(pre_retire_periods)  # Track pre-retirement spending for this path
-                earliest_retirement_age = None  # Track earliest retirement for this path
+                pre_retire_spending = np.zeros(
+                    pre_retire_periods
+                )  # Track pre-retirement spending for this path
+                earliest_retirement_age = (
+                    None  # Track earliest retirement for this path
+                )
                 # Calculate retirement threshold based on actual retirement spending
                 # If wage-based spending is enabled, use pre-retirement spending * replacement_ratio for threshold
                 # Otherwise use the provided retirement spending
-                if params.use_wage_based_spending and params.pre_retire_spending_tracked:
+                if (
+                    params.use_wage_based_spending
+                    and params.pre_retire_spending_tracked
+                ):
                     # Will calculate threshold after we have pre-retirement spending data
                     # For now, use the estimated retirement spending
                     retirement_threshold = total_annual_spend * 25.0
                 else:
-                    retirement_threshold = total_annual_spend * 25.0  # 25x expenses rule
+                    retirement_threshold = (
+                        total_annual_spend * 25.0
+                    )  # 25x expenses rule
 
                 for i in range(total_periods):
                     in_accumulation = i < pre_retire_periods
@@ -458,21 +542,35 @@ class SimulationService:
                             annual_wage = annual_wages_by_year.get(year)
                             if annual_wage is None:
                                 # Fallback to most recent available wage
-                                annual_wage = list(annual_wages_by_year.values())[-1] if annual_wages_by_year else 0.0
+                                annual_wage = (
+                                    list(annual_wages_by_year.values())[-1]
+                                    if annual_wages_by_year
+                                    else 0.0
+                                )
 
                             # Get savings rate for this age
                             savings_rate_for_age = savings_rates_by_age.get(age)
                             if savings_rate_for_age is None:
                                 # Fallback to fixed rate or 0
-                                savings_rate_for_age = params.savings_rate if params.savings_rate is not None else 0.0
+                                savings_rate_for_age = (
+                                    params.savings_rate
+                                    if params.savings_rate is not None
+                                    else 0.0
+                                )
 
                             annual_contrib = annual_wage * savings_rate_for_age
-                            contrib = per_period_amount(annual_contrib, params.frequency)
+                            contrib = per_period_amount(
+                                annual_contrib, params.frequency
+                            )
 
                             # Track pre-retirement spending (income - savings)
                             if params.pre_retire_spending_tracked:
-                                annual_spending = annual_wage * (1.0 - savings_rate_for_age)
-                                pre_retire_spending[i] = per_period_amount(annual_spending, params.frequency)
+                                annual_spending = annual_wage * (
+                                    1.0 - savings_rate_for_age
+                                )
+                                pre_retire_spending[i] = per_period_amount(
+                                    annual_spending, params.frequency
+                                )
                         else:
                             contrib = contrib_pp
                             if params.pre_retire_spending_tracked:
@@ -485,19 +583,23 @@ class SimulationService:
                         if use_dynamic_withdrawal:
                             periods_into_retirement = i - pre_retire_periods
                             years_into_retirement = periods_into_retirement / ppy
-                            annual_withdrawal = self.portfolio_service.calculate_dynamic_withdrawal(
-                                params.withdrawal_params,
-                                initial_category_spending,
-                                years_into_retirement,
-                                avg_inflation_rate,
-                                params.frequency,
-                                avg_category_inflation_rates,
+                            annual_withdrawal = (
+                                self.portfolio_service.calculate_dynamic_withdrawal(
+                                    params.withdrawal_params,
+                                    initial_category_spending,
+                                    years_into_retirement,
+                                    avg_inflation_rate,
+                                    params.frequency,
+                                    avg_category_inflation_rates,
+                                )
                             )
-                            spend_pp = self.portfolio_service.calculate_period_withdrawal(
-                                annual_withdrawal,
-                                params.frequency,
-                                params.pacing,
-                                i,
+                            spend_pp = (
+                                self.portfolio_service.calculate_period_withdrawal(
+                                    annual_withdrawal,
+                                    params.frequency,
+                                    params.pacing,
+                                    i,
+                                )
                             )
                         else:
                             # Fixed spending; apply inflation every period
@@ -510,7 +612,11 @@ class SimulationService:
                     # Get per-asset returns for this period
                     if n_assets == 1:
                         # full_asset_returns[i] is shape (1,) when 2D, or scalar when 1D
-                        period_return_val = full_asset_returns[i, 0] if full_asset_returns.ndim == 2 else full_asset_returns[i]
+                        period_return_val = (
+                            full_asset_returns[i, 0]
+                            if full_asset_returns.ndim == 2
+                            else full_asset_returns[i]
+                        )
                         period_returns_array = np.array([float(period_return_val)])
                         portfolio_return = float(period_return_val) * float(weights[0])
                     else:
@@ -542,24 +648,51 @@ class SimulationService:
                         # Calculate actual retirement spending threshold for this year
                         # If wage-based spending, use pre-retirement spending from this year
                         actual_retirement_threshold = retirement_threshold
-                        if params.use_wage_based_spending and params.pre_retire_spending_tracked:
+                        if (
+                            params.use_wage_based_spending
+                            and params.pre_retire_spending_tracked
+                        ):
                             # Use current year's pre-retirement spending to calculate threshold
                             years_into_accumulation = i / ppy
                             age = params.current_age + int(years_into_accumulation)
                             year = params.current_year + int(years_into_accumulation)
-                            annual_wage = annual_wages_by_year.get(year) if use_wage_based else None
+                            annual_wage = (
+                                annual_wages_by_year.get(year)
+                                if use_wage_based
+                                else None
+                            )
                             if annual_wage is not None:
-                                savings_rate_for_age = savings_rates_by_age.get(age) if use_wage_based else params.savings_rate
+                                savings_rate_for_age = (
+                                    savings_rates_by_age.get(age)
+                                    if use_wage_based
+                                    else params.savings_rate
+                                )
                                 if savings_rate_for_age is None:
-                                    savings_rate_for_age = params.savings_rate if params.savings_rate is not None else 0.15
-                                pre_retire_spending_this_year = annual_wage * (1.0 - savings_rate_for_age)
-                                replacement_ratio = params.replacement_ratio if params.replacement_ratio is not None else 0.80
-                                retirement_spending_this_year = pre_retire_spending_this_year * replacement_ratio
-                                actual_retirement_threshold = retirement_spending_this_year * 25.0
+                                    savings_rate_for_age = (
+                                        params.savings_rate
+                                        if params.savings_rate is not None
+                                        else 0.15
+                                    )
+                                pre_retire_spending_this_year = annual_wage * (
+                                    1.0 - savings_rate_for_age
+                                )
+                                replacement_ratio = (
+                                    params.replacement_ratio
+                                    if params.replacement_ratio is not None
+                                    else 0.80
+                                )
+                                retirement_spending_this_year = (
+                                    pre_retire_spending_this_year * replacement_ratio
+                                )
+                                actual_retirement_threshold = (
+                                    retirement_spending_this_year * 25.0
+                                )
 
                         if state.balance >= actual_retirement_threshold:
                             years_from_start = i / ppy
-                            earliest_retirement_age = params.current_age + years_from_start
+                            earliest_retirement_age = (
+                                params.current_age + years_from_start
+                            )
 
                 balances_over_time.append(balances)
                 spending_over_time.append(spending)
@@ -597,7 +730,9 @@ class SimulationService:
             # sample up to 100
             rng2 = np.random.default_rng(seed + 1 if seed is not None else None)
             n_samples = min(100, len(balances_over_time))
-            sample_indices = rng2.choice(len(balances_over_time), n_samples, replace=False)
+            sample_indices = rng2.choice(
+                len(balances_over_time), n_samples, replace=False
+            )
             sample_paths = np.array([balances_over_time[i] for i in sample_indices])
 
             # Calculate pre-retirement spending metrics
@@ -613,32 +748,52 @@ class SimulationService:
                     for year_idx in range(params.pre_retire_years):
                         start_period = year_idx * ppy
                         end_period = min((year_idx + 1) * ppy, len(path_spending))
-                        annual_spending_path.append(np.sum(path_spending[start_period:end_period]))
+                        annual_spending_path.append(
+                            np.sum(path_spending[start_period:end_period])
+                        )
                     annual_pre_retire_spending.append(annual_spending_path)
 
                 if annual_pre_retire_spending:
-                    annual_pre_retire_spending_arr = np.array(annual_pre_retire_spending)
-                    pre_retire_avg_spending = float(np.mean(annual_pre_retire_spending_arr))
-                    pre_retire_spending_by_year = np.median(annual_pre_retire_spending_arr, axis=0)
+                    annual_pre_retire_spending_arr = np.array(
+                        annual_pre_retire_spending
+                    )
+                    pre_retire_avg_spending = float(
+                        np.mean(annual_pre_retire_spending_arr)
+                    )
+                    pre_retire_spending_by_year = np.median(
+                        annual_pre_retire_spending_arr, axis=0
+                    )
 
                     # If wage-based spending is enabled, recalculate retirement spending based on actual pre-retirement spending
                     # This ensures accuracy in post-simulation analysis
                     if params.use_wage_based_spending and pre_retire_avg_spending > 0:
-                        replacement_ratio = params.replacement_ratio if params.replacement_ratio is not None else 0.80
-                        actual_retirement_spending = pre_retire_avg_spending * replacement_ratio
+                        replacement_ratio = (
+                            params.replacement_ratio
+                            if params.replacement_ratio is not None
+                            else 0.80
+                        )
+                        actual_retirement_spending = (
+                            pre_retire_avg_spending * replacement_ratio
+                        )
 
                         # Note: The simulation already used the estimated retirement spending during the run
                         # This recalculation is for display and validation purposes
                         # The actual simulation paths used the initial estimate, which should be close
                         if use_dynamic_withdrawal and params.withdrawal_params:
                             # Update withdrawal params with actual calculated value for future reference
-                            params.withdrawal_params.total_annual_expense = actual_retirement_spending
+                            params.withdrawal_params.total_annual_expense = (
+                                actual_retirement_spending
+                            )
                         total_annual_spend = actual_retirement_spending
 
             # Calculate earliest retirement ages (filter out None values)
             earliest_retirement_ages_arr = None
-            if earliest_retirement_ages and any(age is not None for age in earliest_retirement_ages):
-                valid_ages = [age for age in earliest_retirement_ages if age is not None]
+            if earliest_retirement_ages and any(
+                age is not None for age in earliest_retirement_ages
+            ):
+                valid_ages = [
+                    age for age in earliest_retirement_ages if age is not None
+                ]
                 if valid_ages:
                     earliest_retirement_ages_arr = np.array(valid_ages)
                     # Pad with None-equivalent (use a sentinel value like -1 or NaN)

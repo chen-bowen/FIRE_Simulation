@@ -56,15 +56,21 @@ class ResultsComponent:
                 f"{result.horizon_periods / result.periods_per_year:.1f} years",
                 help="Total simulation period",
             )
-        
+
         with col4:
-            if result.pre_retire_avg_spending is not None and result.pre_retire_avg_spending > 0:
+            if (
+                result.pre_retire_avg_spending is not None
+                and result.pre_retire_avg_spending > 0
+            ):
                 st.metric(
                     "Avg Pre-Retirement Spending",
                     format_currency(result.pre_retire_avg_spending),
                     help="Average annual spending during accumulation phase",
                 )
-            elif result.earliest_retirement_ages is not None and len(result.earliest_retirement_ages) > 0:
+            elif (
+                result.earliest_retirement_ages is not None
+                and len(result.earliest_retirement_ages) > 0
+            ):
                 median_earliest = np.median(result.earliest_retirement_ages)
                 st.metric(
                     "Earliest Retirement",

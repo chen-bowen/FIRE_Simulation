@@ -117,14 +117,24 @@ class SimulationParams:
         WithdrawalParams
     ] = None  # New dynamic withdrawal params
     use_wage_based_savings: bool = False  # Use wage growth for contributions
-    savings_rate: Optional[float] = None  # Percentage of wage to save (0.0-1.0) - used if savings_rate_profile is None
-    savings_rate_profile: Optional[SavingsRateProfile] = None  # Age-based savings rate profile
+    savings_rate: Optional[
+        float
+    ] = None  # Percentage of wage to save (0.0-1.0) - used if savings_rate_profile is None
+    savings_rate_profile: Optional[
+        SavingsRateProfile
+    ] = None  # Age-based savings rate profile
     education_level: Optional[str] = None  # Education level for wage growth
     current_age: Optional[int] = None  # Current age for wage projections
     current_year: Optional[int] = None  # Current year for wage projections
-    use_wage_based_spending: bool = False  # Calculate retirement spending from final wage
-    replacement_ratio: Optional[float] = None  # Percentage of final wage for retirement spending (default 0.80)
-    pre_retire_spending_tracked: bool = False  # Whether to track pre-retirement spending
+    use_wage_based_spending: bool = (
+        False  # Calculate retirement spending from final wage
+    )
+    replacement_ratio: Optional[
+        float
+    ] = None  # Percentage of final wage for retirement spending (default 0.80)
+    pre_retire_spending_tracked: bool = (
+        False  # Whether to track pre-retirement spending
+    )
 
 
 @dataclass
@@ -151,7 +161,9 @@ class SimulationResult:
         np.ndarray
     ] = None  # Median returns per period (for visualization)
     rebalancing_events: Optional[List[str]] = None  # List of rebalancing event messages
-    pre_retire_avg_spending: Optional[float] = None  # Average annual spending during accumulation
+    pre_retire_avg_spending: Optional[
+        float
+    ] = None  # Average annual spending during accumulation
     pre_retire_spending_by_year: Optional[
         np.ndarray
     ] = None  # Median spending by accumulation year

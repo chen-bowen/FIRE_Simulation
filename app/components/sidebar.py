@@ -182,9 +182,15 @@ class SidebarComponent:
 
         # Age inputs
         st.sidebar.subheader("Age & Timeline")
-        current_age = st.sidebar.number_input("Current age", value=self.config.default_current_age, step=1)
-        retire_age = st.sidebar.number_input("Retirement age", value=self.config.default_retire_age, step=1)
-        plan_until_age = st.sidebar.number_input("Plan until age", value=self.config.default_plan_until_age, step=1)
+        current_age = st.sidebar.number_input(
+            "Current age", value=self.config.default_current_age, step=1
+        )
+        retire_age = st.sidebar.number_input(
+            "Retirement age", value=self.config.default_retire_age, step=1
+        )
+        plan_until_age = st.sidebar.number_input(
+            "Plan until age", value=self.config.default_plan_until_age, step=1
+        )
 
         # Financial inputs
         st.sidebar.subheader("Savings & Spending")
@@ -222,7 +228,9 @@ class SidebarComponent:
         # Initialize portfolio weights in session state
         if "portfolio_weights" not in st.session_state:
             # Default to Moderate 60/40
-            st.session_state.portfolio_weights = self.PORTFOLIO_PRESETS["Moderate (60/40)"].copy()
+            st.session_state.portfolio_weights = self.PORTFOLIO_PRESETS[
+                "Moderate (60/40)"
+            ].copy()
 
         # Mode selection: Preset or Custom (same pattern as retirement spending)
         if "portfolio_mode_radio" not in st.session_state:
@@ -259,14 +267,18 @@ class SidebarComponent:
             # Track if preset changed to sync slider
             if selected_preset != st.session_state.previous_portfolio_preset:
                 if selected_preset in self.PORTFOLIO_PRESETS:
-                    st.session_state.portfolio_weights = self.PORTFOLIO_PRESETS[selected_preset].copy()
+                    st.session_state.portfolio_weights = self.PORTFOLIO_PRESETS[
+                        selected_preset
+                    ].copy()
                     preset_changed = True
                 st.session_state.previous_portfolio_preset = selected_preset
 
             st.sidebar.caption(f"📋 Using preset: **{selected_preset}**")
         else:
             # Custom mode
-            st.sidebar.info("🎨 **Custom Mode**: Adjust asset classes and allocations below")
+            st.sidebar.info(
+                "🎨 **Custom Mode**: Adjust asset classes and allocations below"
+            )
             # Reset previous preset when switching to custom
             if st.session_state.previous_portfolio_preset is not None:
                 st.session_state.previous_portfolio_preset = None
@@ -275,7 +287,9 @@ class SidebarComponent:
         # In preset mode, use portfolio weights directly without checkboxes
         if not is_custom_mode:
             # Use current portfolio weights from preset
-            enabled_assets = {k: v for k, v in st.session_state.portfolio_weights.items() if v > 0}
+            enabled_assets = {
+                k: v for k, v in st.session_state.portfolio_weights.items() if v > 0
+            }
         else:
             # Custom mode: Checkboxes to enable/disable asset classes
             st.sidebar.markdown("**Select asset classes:**")
@@ -286,7 +300,8 @@ class SidebarComponent:
                 if checkbox_key not in st.session_state:
                     # Default to checked if it has a weight > 0, otherwise unchecked
                     st.session_state[checkbox_key] = (
-                        asset_class in st.session_state.portfolio_weights and st.session_state.portfolio_weights[asset_class] > 0
+                        asset_class in st.session_state.portfolio_weights
+                        and st.session_state.portfolio_weights[asset_class] > 0
                     )
 
                 # Show checkboxes in Custom mode
@@ -296,7 +311,9 @@ class SidebarComponent:
                 )
                 if is_enabled:
                     # Get current weight or default to 0
-                    current_weight = st.session_state.portfolio_weights.get(asset_class, 0.0)
+                    current_weight = st.session_state.portfolio_weights.get(
+                        asset_class, 0.0
+                    )
                     enabled_assets[asset_class] = current_weight
                 else:
                     # If unchecked, remove from portfolio weights
@@ -328,7 +345,9 @@ class SidebarComponent:
         # If there are newly enabled assets, distribute remaining weight equally
         if newly_enabled and total_enabled_weight < 100.0:
             remaining_weight = 100.0 - total_enabled_weight
-            per_new_asset = remaining_weight / len(newly_enabled) if newly_enabled else 0.0
+            per_new_asset = (
+                remaining_weight / len(newly_enabled) if newly_enabled else 0.0
+            )
             for asset_class in newly_enabled:
                 enabled_assets[asset_class] = per_new_asset
                 st.session_state.portfolio_weights[asset_class] = per_new_asset
@@ -347,11 +366,16 @@ class SidebarComponent:
                 st.session_state.prev_multi_asset_slider_values = {}
 
             # Initialize slider states from current portfolio weights (only on first load or preset change)
-            if "multi_asset_sliders_initialized" not in st.session_state or preset_changed:
+            if (
+                "multi_asset_sliders_initialized" not in st.session_state
+                or preset_changed
+            ):
                 for asset_class in asset_list:
                     slider_key = f"multi_asset_slider_{asset_class}"
                     st.session_state[slider_key] = enabled_assets.get(asset_class, 0.0)
-                    st.session_state.prev_multi_asset_slider_values[asset_class] = enabled_assets.get(asset_class, 0.0)
+                    st.session_state.prev_multi_asset_slider_values[
+                        asset_class
+                    ] = enabled_assets.get(asset_class, 0.0)
                 st.session_state.multi_asset_sliders_initialized = True
 
             # Ensure all current assets have slider state initialized
@@ -360,7 +384,9 @@ class SidebarComponent:
                 if slider_key not in st.session_state:
                     default_value = enabled_assets.get(asset_class, 0.0)
                     st.session_state[slider_key] = default_value
-                    st.session_state.prev_multi_asset_slider_values[asset_class] = default_value
+                    st.session_state.prev_multi_asset_slider_values[
+                        asset_class
+                    ] = default_value
 
             # Check if we have target values from proportional adjustment (from previous render)
             target_weights_key = "multi_asset_target_slider_values"
@@ -407,11 +433,15 @@ class SidebarComponent:
                 delta = new_value - old_value
 
                 # Get other assets
-                other_assets = {k: v for k, v in slider_values.items() if k != changed_asset}
+                other_assets = {
+                    k: v for k, v in slider_values.items() if k != changed_asset
+                }
 
                 if other_assets and abs(delta) > 0.01:
                     # Calculate total of other assets from previous values
-                    other_total = sum(prev_values.get(k, 0.0) for k in other_assets.keys())
+                    other_total = sum(
+                        prev_values.get(k, 0.0) for k in other_assets.keys()
+                    )
 
                     if other_total > 0.01:
                         # Adjust other assets proportionally
@@ -420,12 +450,16 @@ class SidebarComponent:
                             prev_other_value = prev_values.get(asset, 0.0)
                             proportion = prev_other_value / other_total
                             adjustment = -delta * proportion
-                            target_values[asset] = max(0.0, min(100.0, prev_other_value + adjustment))
+                            target_values[asset] = max(
+                                0.0, min(100.0, prev_other_value + adjustment)
+                            )
 
                         # Store target values for next render
                         st.session_state[target_weights_key] = target_values
                         # Update previous values
-                        st.session_state.prev_multi_asset_slider_values = target_values.copy()
+                        st.session_state.prev_multi_asset_slider_values = (
+                            target_values.copy()
+                        )
                         # Trigger rerun to apply adjustments
                         st.rerun()
                     else:
@@ -445,7 +479,9 @@ class SidebarComponent:
                                 )
 
                             st.session_state[target_weights_key] = target_values
-                            st.session_state.prev_multi_asset_slider_values = target_values.copy()
+                            st.session_state.prev_multi_asset_slider_values = (
+                                target_values.copy()
+                            )
                             st.rerun()
 
             # Ensure total is exactly 100% (final normalization)
@@ -453,10 +489,14 @@ class SidebarComponent:
             if abs(total_pct - 100.0) > 0.01 and total_pct > 0.01:
                 # Normalize to exactly 100%
                 normalization_factor = 100.0 / total_pct
-                normalized_values = {k: v * normalization_factor for k, v in slider_values.items()}
+                normalized_values = {
+                    k: v * normalization_factor for k, v in slider_values.items()
+                }
                 # Store normalized values for next render
                 st.session_state[target_weights_key] = normalized_values
-                st.session_state.prev_multi_asset_slider_values = normalized_values.copy()
+                st.session_state.prev_multi_asset_slider_values = (
+                    normalized_values.copy()
+                )
                 st.rerun()
 
             # Update previous values for next comparison
@@ -482,7 +522,9 @@ class SidebarComponent:
         portfolio_tickers = []
         portfolio_weights = np.array([])
         try:
-            portfolio_tickers, portfolio_weights = self._get_tickers_for_assets(st.session_state.portfolio_weights)
+            portfolio_tickers, portfolio_weights = self._get_tickers_for_assets(
+                st.session_state.portfolio_weights
+            )
         except Exception:
             # Fallback to defaults if there's an issue
             portfolio_tickers = list(self.config.default_tickers)
@@ -499,7 +541,9 @@ class SidebarComponent:
         spending_mode = st.sidebar.radio(
             "Planning style",
             options=["Simple amount", "Detailed plan"],
-            index=0 if st.session_state.retirement_spending_mode_radio == "Simple amount" else 1,
+            index=0
+            if st.session_state.retirement_spending_mode_radio == "Simple amount"
+            else 1,
             help="Start with a single spending number or build a CPI-aware plan with categories.",
             key="retirement_spending_mode_radio",
         )
@@ -517,7 +561,9 @@ class SidebarComponent:
             # Initialize category percentages if not already set
             if "category_percentages" not in st.session_state:
                 default_pct = 100.0 / len(self.EXPENSE_CATEGORIES)
-                st.session_state.category_percentages = {cat: default_pct for cat in self.EXPENSE_CATEGORIES.keys()}
+                st.session_state.category_percentages = {
+                    cat: default_pct for cat in self.EXPENSE_CATEGORIES.keys()
+                }
             if "previous_preset" not in st.session_state:
                 st.session_state.previous_preset = None
             if "previous_education_level" not in st.session_state:
@@ -541,20 +587,30 @@ class SidebarComponent:
                     "Savings rate style",
                     options=["Constant rate", "Age-based profile"],
                     index=(
-                        0 if "savings_rate_mode" not in st.session_state else (0 if st.session_state.savings_rate_mode == "constant" else 1)
+                        0
+                        if "savings_rate_mode" not in st.session_state
+                        else (
+                            0 if st.session_state.savings_rate_mode == "constant" else 1
+                        )
                     ),
                     key="savings_rate_mode_radio",
                 )
-                st.session_state.savings_rate_mode = "constant" if savings_rate_mode == "Constant rate" else "profile"
+                st.session_state.savings_rate_mode = (
+                    "constant" if savings_rate_mode == "Constant rate" else "profile"
+                )
 
                 if savings_rate_mode == "Constant rate":
                     # Initialize slider value in session state if not present
                     if "savings_rate_slider" not in st.session_state:
                         initial_rate = st.session_state.get("savings_rate", 0.15)
-                        st.session_state.savings_rate_slider = min(100.0, max(5.0, initial_rate * 100.0))
+                        st.session_state.savings_rate_slider = min(
+                            100.0, max(5.0, initial_rate * 100.0)
+                        )
 
                     # Get current slider value and ensure it's within bounds
-                    current_slider_value = st.session_state.get("savings_rate_slider", 15.0)
+                    current_slider_value = st.session_state.get(
+                        "savings_rate_slider", 15.0
+                    )
                     # Clamp to exact bounds to prevent bouncing
                     clamped_value = max(5.0, min(100.0, current_slider_value))
 
@@ -568,7 +624,9 @@ class SidebarComponent:
                         key="savings_rate_slider",
                     )
                     # Show bounds below slider
-                    st.sidebar.caption("Select a savings rate profile between 5% and 100%")
+                    st.sidebar.caption(
+                        "Select a savings rate profile between 5% and 100%"
+                    )
                     # Ensure value stays within bounds (handle any edge cases)
                     savings_rate_pct = max(5.0, min(100.0, savings_rate_pct))
                     # Convert to decimal and store
@@ -601,12 +659,18 @@ class SidebarComponent:
                         savings_rate_profile = savings_presets[preset_choice]
                         st.session_state.savings_rate_profile = savings_rate_profile
                         st.sidebar.markdown("**Profile overview**")
-                        for (start_age, end_age), rate in zip(savings_rate_profile.age_ranges, savings_rate_profile.rates):
-                            st.sidebar.write(f"- Age {start_age}-{end_age}: {rate*100:.0f}%")
+                        for (start_age, end_age), rate in zip(
+                            savings_rate_profile.age_ranges, savings_rate_profile.rates
+                        ):
+                            st.sidebar.write(
+                                f"- Age {start_age}-{end_age}: {rate*100:.0f}%"
+                            )
 
                         st.sidebar.markdown("**Adjust rates:**")
                         edited_rates = []
-                        for (start_age, end_age), rate in zip(savings_rate_profile.age_ranges, savings_rate_profile.rates):
+                        for (start_age, end_age), rate in zip(
+                            savings_rate_profile.age_ranges, savings_rate_profile.rates
+                        ):
                             # Ensure value is within bounds to prevent bouncing
                             current_rate_pct = min(100.0, max(0.0, rate * 100.0))
                             new_rate = (
@@ -628,18 +692,29 @@ class SidebarComponent:
                             )
                             st.session_state.savings_rate_profile = savings_rate_profile
                     else:
-                        st.sidebar.info("Custom profiles coming soon. Using your constant rate for now.")
-                        savings_rate = st.session_state.savings_rate if st.session_state.savings_rate else 0.15
+                        st.sidebar.info(
+                            "Custom profiles coming soon. Using your constant rate for now."
+                        )
+                        savings_rate = (
+                            st.session_state.savings_rate
+                            if st.session_state.savings_rate
+                            else 0.15
+                        )
                         savings_rate_profile = None
 
                 # Initialize education level default to Master's degree in Detailed plan mode
-                if "current_education_level" not in st.session_state or st.session_state.current_education_level is None:
+                if (
+                    "current_education_level" not in st.session_state
+                    or st.session_state.current_education_level is None
+                ):
                     st.session_state.current_education_level = "Master's degree"
 
                 # Get current education level index
                 current_education_index = 0
                 if st.session_state.current_education_level in self.EDUCATION_LEVELS:
-                    current_education_index = self.EDUCATION_LEVELS.index(st.session_state.current_education_level)
+                    current_education_index = self.EDUCATION_LEVELS.index(
+                        st.session_state.current_education_level
+                    )
 
                 # Current wage input - shown after savings rate settings
                 current_wage_str = st.sidebar.text_input(
@@ -663,9 +738,14 @@ class SidebarComponent:
                 st.session_state.current_education_level = education_level
 
                 # Apply education-based category template if changed
-                if education_level and education_level in self.EDUCATION_EXPENSE_PRESETS:
+                if (
+                    education_level
+                    and education_level in self.EDUCATION_EXPENSE_PRESETS
+                ):
                     if st.session_state.previous_education_level != education_level:
-                        st.session_state.category_percentages = self.EDUCATION_EXPENSE_PRESETS[education_level].copy()
+                        st.session_state.category_percentages = (
+                            self.EDUCATION_EXPENSE_PRESETS[education_level].copy()
+                        )
                         st.session_state.previous_education_level = education_level
                 elif st.session_state.previous_education_level is None:
                     st.session_state.previous_education_level = education_level
@@ -675,27 +755,40 @@ class SidebarComponent:
                     first_year_rate = (
                         savings_rate
                         if savings_rate
-                        else (savings_rate_profile.get_rate_for_age(current_age) if savings_rate_profile else 0.15)
+                        else (
+                            savings_rate_profile.get_rate_for_age(current_age)
+                            if savings_rate_profile
+                            else 0.15
+                        )
                     )
                     first_year_savings = current_wage * first_year_rate
                     savings_pct = first_year_rate * 100
-                    st.sidebar.info(f"💾 First year savings: ${first_year_savings:,.0f} ({savings_pct:.0f}% of income)")
+                    st.sidebar.info(
+                        f"💾 First year savings: ${first_year_savings:,.0f} ({savings_pct:.0f}% of income)"
+                    )
                 else:
                     from app.services import DataService
 
                     data_service = DataService()
-                    weekly_wage = data_service.get_income_for_education_level(education_level)
+                    weekly_wage = data_service.get_income_for_education_level(
+                        education_level
+                    )
                     if weekly_wage:
                         annual_wage = data_service.get_annual_wage(weekly_wage)
                         first_year_rate = (
                             savings_rate
                             if savings_rate
-                            else (savings_rate_profile.get_rate_for_age(current_age) if savings_rate_profile else 0.15)
+                            else (
+                                savings_rate_profile.get_rate_for_age(current_age)
+                                if savings_rate_profile
+                                else 0.15
+                            )
                         )
                         first_year_savings = annual_wage * first_year_rate
                         savings_pct = first_year_rate * 100
                         st.sidebar.info(
-                            f"💾 Estimated first year savings: ${first_year_savings:,.0f} " f"({savings_pct:.0f}% of ${annual_wage:,.0f})"
+                            f"💾 Estimated first year savings: ${first_year_savings:,.0f} "
+                            f"({savings_pct:.0f}% of ${annual_wage:,.0f})"
                         )
 
                 # Retirement spending based on lifestyle - direct input (no checkbox)
@@ -720,22 +813,37 @@ class SidebarComponent:
                 from datetime import datetime
 
                 data_service = DataService()
-                target_retire_age = retire_age if retire_age > current_age else current_age + 30
+                target_retire_age = (
+                    retire_age if retire_age > current_age else current_age + 30
+                )
                 weekly_wage_at_retirement = None
                 if education_level:
                     weekly_wage_at_retirement = data_service.get_wage_for_age(
-                        education_level, current_age, datetime.now().year, target_retire_age
+                        education_level,
+                        current_age,
+                        datetime.now().year,
+                        target_retire_age,
                     )
                 if weekly_wage_at_retirement:
-                    annual_wage_at_retirement = data_service.get_annual_wage(weekly_wage_at_retirement)
+                    annual_wage_at_retirement = data_service.get_annual_wage(
+                        weekly_wage_at_retirement
+                    )
                     if savings_rate_profile:
-                        savings_rate_for_retirement = savings_rate_profile.get_rate_for_age(target_retire_age)
+                        savings_rate_for_retirement = (
+                            savings_rate_profile.get_rate_for_age(target_retire_age)
+                        )
                         if savings_rate_for_retirement is None:
-                            savings_rate_for_retirement = savings_rate if savings_rate else 0.15
+                            savings_rate_for_retirement = (
+                                savings_rate if savings_rate else 0.15
+                            )
                     else:
-                        savings_rate_for_retirement = savings_rate if savings_rate else 0.15
+                        savings_rate_for_retirement = (
+                            savings_rate if savings_rate else 0.15
+                        )
 
-                    pre_retire_spending_est = annual_wage_at_retirement * (1.0 - savings_rate_for_retirement)
+                    pre_retire_spending_est = annual_wage_at_retirement * (
+                        1.0 - savings_rate_for_retirement
+                    )
                     retirement_spending = pre_retire_spending_est * replacement_ratio
                     # Use calculated retirement spending as total_annual_expense
                     total_annual_expense = retirement_spending
@@ -749,7 +857,9 @@ class SidebarComponent:
                 savings_rate_profile = None
                 use_wage_based_spending = False
                 replacement_ratio = None
-                st.sidebar.info("ℹ️ You are already retired - no savings contributions will be applied.")
+                st.sidebar.info(
+                    "ℹ️ You are already retired - no savings contributions will be applied."
+                )
 
             # Expense category preset selection - moved below Pre-retirement Savings
             st.sidebar.markdown("---")
@@ -765,10 +875,14 @@ class SidebarComponent:
 
             if selected_preset != st.session_state.previous_preset:
                 if selected_preset in self.EXPENSE_PRESETS:
-                    st.session_state.category_percentages = self.EXPENSE_PRESETS[selected_preset].copy()
+                    st.session_state.category_percentages = self.EXPENSE_PRESETS[
+                        selected_preset
+                    ].copy()
                 else:
                     default_pct = 100.0 / len(self.EXPENSE_CATEGORIES)
-                    st.session_state.category_percentages = {cat: default_pct for cat in self.EXPENSE_CATEGORIES.keys()}
+                    st.session_state.category_percentages = {
+                        cat: default_pct for cat in self.EXPENSE_CATEGORIES.keys()
+                    }
                 st.session_state.previous_preset = selected_preset
 
             # Show pie chart directly - always visible
@@ -777,7 +891,9 @@ class SidebarComponent:
             st.sidebar.plotly_chart(fig, use_container_width=True)
 
             # Fine-tune percentages - show directly or in expander
-            st.sidebar.caption("Need tweaks? Adjust sliders below to rebalance categories.")
+            st.sidebar.caption(
+                "Need tweaks? Adjust sliders below to rebalance categories."
+            )
             customize = st.sidebar.checkbox(
                 "Fine-tune percentages",
                 value=selected_preset == "Custom",
@@ -798,13 +914,18 @@ class SidebarComponent:
 
                 total_pct = sum(new_percentages.values())
                 if total_pct > 0:
-                    normalized = {k: (v / total_pct) * 100.0 for k, v in new_percentages.items()}
+                    normalized = {
+                        k: (v / total_pct) * 100.0 for k, v in new_percentages.items()
+                    }
                     st.session_state.category_percentages = normalized
                 else:
                     st.session_state.category_percentages = new_percentages
 
             expense_categories = [
-                ExpenseCategory(name=cat, percentage=st.session_state.category_percentages[cat]) for cat in self.EXPENSE_CATEGORIES.keys()
+                ExpenseCategory(
+                    name=cat, percentage=st.session_state.category_percentages[cat]
+                )
+                for cat in self.EXPENSE_CATEGORIES.keys()
             ]
 
             withdrawal_params = WithdrawalParams(
@@ -814,8 +935,12 @@ class SidebarComponent:
             )
 
             if withdrawal_params and (current_wage > 0 or education_level):
-                withdrawal_params.current_wage = current_wage if current_wage > 0 else None
-                withdrawal_params.education_level = education_level if education_level else None
+                withdrawal_params.current_wage = (
+                    current_wage if current_wage > 0 else None
+                )
+                withdrawal_params.education_level = (
+                    education_level if education_level else None
+                )
 
         else:
             annual_spend_str = st.sidebar.text_input(
@@ -825,20 +950,30 @@ class SidebarComponent:
                 help="Use a single number if you don't need CPI-aware categories.",
             )
             annual_spend = self._parse_currency_input(annual_spend_str)
-            st.sidebar.caption(f"💵 \${annual_spend:,.0f}/year · \${annual_spend/12:,.0f}/month")
+            st.sidebar.caption(
+                f"💵 \${annual_spend:,.0f}/year · \${annual_spend/12:,.0f}/month"
+            )
 
         # Check if already retired
         is_already_retired = retire_age <= current_age
 
         # Show annual contribution input only in "Simple amount" mode AND NOT using wage-based savings AND NOT already retired
-        if not use_dynamic_withdrawal and not use_wage_based_savings and not is_already_retired:
+        if (
+            not use_dynamic_withdrawal
+            and not use_wage_based_savings
+            and not is_already_retired
+        ):
             annual_contrib_str = st.sidebar.text_input(
                 "Annual savings before retirement ($)",
                 value=str(int(self.config.default_annual_contrib)),
                 help="Enter amount (e.g., 10000). Fixed annual contribution amount (ignored if wage-based savings is enabled).",
             )
             try:
-                annual_contrib = float(annual_contrib_str.replace(",", "").replace("$", "").strip()) if annual_contrib_str.strip() else 0.0
+                annual_contrib = (
+                    float(annual_contrib_str.replace(",", "").replace("$", "").strip())
+                    if annual_contrib_str.strip()
+                    else 0.0
+                )
             except ValueError:
                 annual_contrib = 0.0
             st.sidebar.caption(f"💵 ${annual_contrib:,.0f}")
@@ -846,7 +981,9 @@ class SidebarComponent:
             # Set a placeholder value - either Detailed plan mode, wage-based savings, or already retired
             annual_contrib = 0.0
             if is_already_retired:
-                st.sidebar.info("ℹ️ You are already retired - no savings contributions will be applied.")
+                st.sidebar.info(
+                    "ℹ️ You are already retired - no savings contributions will be applied."
+                )
 
         # ===== ADVANCED SETTINGS (In Expander) =====
         with st.sidebar.expander("⚙️ Advanced Settings", expanded=False):
@@ -867,8 +1004,12 @@ class SidebarComponent:
                 )
 
             # Date range
-            start = st.text_input("Data start (YYYY-MM-DD)", value=self.config.default_start_date)
-            end = st.text_input("Data end (YYYY-MM-DD)", value=self.config.default_end_date)
+            start = st.text_input(
+                "Data start (YYYY-MM-DD)", value=self.config.default_start_date
+            )
+            end = st.text_input(
+                "Data end (YYYY-MM-DD)", value=self.config.default_end_date
+            )
 
             # Manual ticker/weight override
             use_custom_tickers = st.checkbox(
@@ -878,7 +1019,9 @@ class SidebarComponent:
             )
 
             if use_custom_tickers:
-                st.warning("⚠️ Custom tickers/weights will override the portfolio allocation above.")
+                st.warning(
+                    "⚠️ Custom tickers/weights will override the portfolio allocation above."
+                )
                 tickers_input = st.text_input(
                     "Tickers (comma)",
                     value=",".join(self.config.default_tickers),
@@ -890,14 +1033,22 @@ class SidebarComponent:
                 )
             else:
                 # Use portfolio allocation from main sidebar
-                tickers_input = ",".join(portfolio_tickers) if portfolio_tickers else ",".join(self.config.default_tickers)
+                tickers_input = (
+                    ",".join(portfolio_tickers)
+                    if portfolio_tickers
+                    else ",".join(self.config.default_tickers)
+                )
                 weights_input = (
-                    ",".join(map(str, portfolio_weights)) if len(portfolio_weights) > 0 else ",".join(map(str, self.config.default_weights))
+                    ",".join(map(str, portfolio_weights))
+                    if len(portfolio_weights) > 0
+                    else ",".join(map(str, self.config.default_weights))
                 )
 
             # Simulation settings
             st.markdown("**Simulation Settings**")
-            n_paths = st.number_input("MC paths", value=self.config.default_mc_paths, min_value=100, step=100)
+            n_paths = st.number_input(
+                "MC paths", value=self.config.default_mc_paths, min_value=100, step=100
+            )
             seed = st.number_input(
                 "Random seed",
                 value=self.config.default_seed,
@@ -953,7 +1104,8 @@ class SidebarComponent:
             "use_wage_based_spending": use_wage_based_spending,
             "replacement_ratio": replacement_ratio,
             # Auto-track pre-retirement spending when wage-based spending is enabled (covers both savings and spending)
-            "pre_retire_spending_tracked": use_wage_based_savings or use_wage_based_spending,
+            "pre_retire_spending_tracked": use_wage_based_savings
+            or use_wage_based_spending,
         }
 
     def _parse_currency_input(self, raw_value: Optional[str]) -> float:
@@ -966,7 +1118,9 @@ class SidebarComponent:
         except ValueError:
             return 0.0
 
-    def _get_tickers_for_assets(self, asset_weights: Dict[str, float]) -> Tuple[list[str], np.ndarray]:
+    def _get_tickers_for_assets(
+        self, asset_weights: Dict[str, float]
+    ) -> Tuple[list[str], np.ndarray]:
         """Map asset class names to ticker symbols and return tickers with weights.
 
         Args:
@@ -979,7 +1133,9 @@ class SidebarComponent:
         weights = []
 
         # Filter out zero weights and sort by weight (descending)
-        filtered_weights = {k: v for k, v in asset_weights.items() if v > 0 and k in self.ASSET_CLASSES}
+        filtered_weights = {
+            k: v for k, v in asset_weights.items() if v > 0 and k in self.ASSET_CLASSES
+        }
 
         for asset_class, weight in filtered_weights.items():
             # Get ticker list for this asset class
@@ -1029,7 +1185,9 @@ class SidebarComponent:
         if is_already_retired:
             # For already retired, plan_until_age must be greater than current_age
             if inputs["plan_until_age"] <= inputs["current_age"]:
-                st.error("Plan until age must be greater than current age (you are already retired)")
+                st.error(
+                    "Plan until age must be greater than current age (you are already retired)"
+                )
                 st.stop()
         else:
             # For pre-retirement, standard validation applies
@@ -1042,9 +1200,13 @@ class SidebarComponent:
             st.stop()
 
         if len(inputs["weights"]) != len(inputs["tickers"]):
-            st.warning("Number of weights doesn't match number of tickers. Will be adjusted automatically.")
+            st.warning(
+                "Number of weights doesn't match number of tickers. Will be adjusted automatically."
+            )
 
-    def _create_pie_chart(self, percentages: Dict[str, float], total_expense: float) -> go.Figure:
+    def _create_pie_chart(
+        self, percentages: Dict[str, float], total_expense: float
+    ) -> go.Figure:
         """Create an interactive pie chart for expense categories."""
         labels = list(percentages.keys())
         values = [percentages[label] for label in labels]
@@ -1053,7 +1215,10 @@ class SidebarComponent:
         amounts = [(pct / 100.0) * total_expense for pct in values]
 
         # Create hover text with both percentage and dollar amount
-        hover_text = [f"{label}<br>{pct:.1f}% = ${amt:,.0f}/year" for label, pct, amt in zip(labels, values, amounts)]
+        hover_text = [
+            f"{label}<br>{pct:.1f}% = ${amt:,.0f}/year"
+            for label, pct, amt in zip(labels, values, amounts)
+        ]
 
         fig = go.Figure(
             data=[
@@ -1074,13 +1239,17 @@ class SidebarComponent:
             title="Expense Category Distribution",
             showlegend=False,
             height=450,
-            margin=dict(l=80, r=80, t=50, b=50),  # Increased left/right margins for labels
+            margin=dict(
+                l=80, r=80, t=50, b=50
+            ),  # Increased left/right margins for labels
             legend=dict(visible=False),
         )
 
         return fig
 
-    def _create_portfolio_pie_chart(self, asset_weights: Dict[str, float], initial_balance: Optional[float] = None) -> go.Figure:
+    def _create_portfolio_pie_chart(
+        self, asset_weights: Dict[str, float], initial_balance: Optional[float] = None
+    ) -> go.Figure:
         """Create an interactive pie chart for portfolio allocation.
 
         Args:

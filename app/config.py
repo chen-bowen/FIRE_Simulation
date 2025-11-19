@@ -40,14 +40,19 @@ class AppConfig:
     crypto_extreme_crash_max: float = -0.70  # maximum -70% crash
     crypto_extreme_rally_min: float = 1.50  # minimum +150% rally
     crypto_extreme_rally_max: float = 2.00  # maximum +200% rally
-    crypto_crash_prob_ratio: float = 0.65  # 65% of extreme events are crashes, 35% rallies
+    crypto_crash_prob_ratio: float = (
+        0.65  # 65% of extreme events are crashes, 35% rallies
+    )
     crypto_volatility_dampening: float = 0.3  # 30% reduction per year beyond data
     crypto_min_data_years: float = 10.0  # minimum years before dampening
 
     def __post_init__(self):
         """Set default values after initialization."""
         if self.default_tickers is None:
-            self.default_tickers = ["^GSPC", "BND"]  # Use BND (bond ETF) instead of ^TNX (yield index)
+            self.default_tickers = [
+                "^GSPC",
+                "BND",
+            ]  # Use BND (bond ETF) instead of ^TNX (yield index)
         if self.default_weights is None:
             self.default_weights = [0.6, 0.4]
         if self.default_end_date is None:

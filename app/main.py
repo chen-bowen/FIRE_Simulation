@@ -47,7 +47,9 @@ def main():
     5. Display results across multiple tabs
     """
     # Configure Streamlit page layout
-    st.set_page_config(page_title="Retirement Planner", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(
+        page_title="Retirement Planner", layout="wide", initial_sidebar_state="expanded"
+    )
     st.title("Retirement Planner")
 
     # Initialize UI components
@@ -57,7 +59,9 @@ def main():
 
     # Initialize business logic services
     data_service = DataService()  # Fetches market data from Yahoo Finance
-    simulation_service = SimulationService()  # Runs hybrid simulation (historical accumulation + Monte Carlo retirement)
+    simulation_service = (
+        SimulationService()
+    )  # Runs hybrid simulation (historical accumulation + Monte Carlo retirement)
 
     # Render sidebar and collect user inputs
     inputs = sidebar.render()
@@ -65,16 +69,24 @@ def main():
     # Validate inputs
     try:
         sidebar.validate_inputs(inputs)
-        validate_age_inputs(inputs["current_age"], inputs["retire_age"], inputs["plan_until_age"])
+        validate_age_inputs(
+            inputs["current_age"], inputs["retire_age"], inputs["plan_until_age"]
+        )
         # Only validate annual_spend if not using dynamic withdrawal
-        annual_spend = inputs["annual_spend"] if inputs["annual_spend"] is not None else 0.0
-        validate_financial_inputs(inputs["initial_balance"], inputs["annual_contrib"], annual_spend)
+        annual_spend = (
+            inputs["annual_spend"] if inputs["annual_spend"] is not None else 0.0
+        )
+        validate_financial_inputs(
+            inputs["initial_balance"], inputs["annual_contrib"], annual_spend
+        )
     except Exception as e:
         st.error(f"Input validation error: {str(e)}")
         st.stop()
 
     # Calculate derived parameters
-    pre_retire_years, retire_years = calculate_horizon_years(inputs["current_age"], inputs["retire_age"], inputs["plan_until_age"])
+    pre_retire_years, retire_years = calculate_horizon_years(
+        inputs["current_age"], inputs["retire_age"], inputs["plan_until_age"]
+    )
     total_years = pre_retire_years + retire_years
 
     # Display pre-simulation summary cards
@@ -107,7 +119,9 @@ def main():
     with col3:
         annual_spend_display = inputs.get("annual_spend") or 0.0
         if inputs.get("withdrawal_params"):
-            annual_spend_display = inputs["withdrawal_params"].total_annual_expense or 0.0
+            annual_spend_display = (
+                inputs["withdrawal_params"].total_annual_expense or 0.0
+            )
 
         # Show spending label - wage-based if enabled
         spending_label = "Annual Spending"
@@ -115,7 +129,9 @@ def main():
         if inputs.get("use_wage_based_spending"):
             replacement_ratio = inputs.get("replacement_ratio", 0.80)
             spending_label = f"Annual Spending (wage-based)"
-            spending_help_text = f"Wage-based: {replacement_ratio*100:.0f}% of pre-retirement spending"
+            spending_help_text = (
+                f"Wage-based: {replacement_ratio*100:.0f}% of pre-retirement spending"
+            )
 
         st.metric(
             spending_label,
@@ -129,21 +145,32 @@ def main():
             "",
             help="Portfolio allocation",
         )
-        if "portfolio_weights" in st.session_state and st.session_state.portfolio_weights:
-            portfolio_weights = {k: v for k, v in st.session_state.portfolio_weights.items() if v > 0}
+        if (
+            "portfolio_weights" in st.session_state
+            and st.session_state.portfolio_weights
+        ):
+            portfolio_weights = {
+                k: v for k, v in st.session_state.portfolio_weights.items() if v > 0
+            }
             if portfolio_weights:
-                fig = sidebar._create_portfolio_pie_chart(portfolio_weights, initial_balance=inputs["initial_balance"])
+                fig = sidebar._create_portfolio_pie_chart(
+                    portfolio_weights, initial_balance=inputs["initial_balance"]
+                )
                 # Remove title and adjust layout for better spacing
                 fig.update_layout(
                     title="",  # Remove title since "Portfolio" metric already serves as title
                     height=250,  # Reduced height for more compact display
-                    margin=dict(l=20, r=20, t=0, b=20),  # Minimal margins to bring chart closer to title
+                    margin=dict(
+                        l=20, r=20, t=0, b=20
+                    ),  # Minimal margins to bring chart closer to title
                     showlegend=False,  # Hide legend to prevent overlap with text labels
                 )
                 # Update center annotation font size for smaller chart
                 if fig.layout.annotations:
                     fig.layout.annotations[0].font.size = 12
-                st.plotly_chart(fig, use_container_width=True, key="summary_portfolio_chart")
+                st.plotly_chart(
+                    fig, use_container_width=True, key="summary_portfolio_chart"
+                )
             else:
                 st.info("No portfolio allocation set")
         else:
@@ -164,36 +191,54 @@ def main():
             st.write(f"- Initial Balance: ${inputs['initial_balance']:,.0f}")
 
             # Show annual contribution - calculate from wage if wage-based savings is enabled
-            if inputs.get("use_wage_based_savings") and inputs.get("education_level") and inputs.get("savings_rate"):
+            if (
+                inputs.get("use_wage_based_savings")
+                and inputs.get("education_level")
+                and inputs.get("savings_rate")
+            ):
                 # Calculate first-year contribution from wage
-                weekly_wage = data_service.get_income_for_education_level(inputs["education_level"])
+                weekly_wage = data_service.get_income_for_education_level(
+                    inputs["education_level"]
+                )
                 if weekly_wage:
                     annual_wage = data_service.get_annual_wage(weekly_wage)
                     first_year_contrib = annual_wage * inputs["savings_rate"]
                     savings_pct = inputs["savings_rate"] * 100
                     st.write(f"- Annual Contribution: ${first_year_contrib:,.0f}")
-                    st.write(f"  (wage-based, {savings_pct:.0f}% of ${annual_wage:,.0f})")
+                    st.write(
+                        f"  (wage-based, {savings_pct:.0f}% of ${annual_wage:,.0f})"
+                    )
                 else:
                     savings_pct = inputs["savings_rate"] * 100
                     st.write("- Annual Contribution: Wage-based")
-                    st.write(f"  (education: {inputs['education_level']}, rate: {savings_pct:.0f}%)")
+                    st.write(
+                        f"  (education: {inputs['education_level']}, rate: {savings_pct:.0f}%)"
+                    )
             else:
                 st.write(f"- Annual Contribution: ${inputs['annual_contrib']:,.0f}")
 
             # Display annual spending
             annual_spend_display = inputs.get("annual_spend") or 0.0
             if inputs.get("withdrawal_params"):
-                annual_spend_display = inputs["withdrawal_params"].total_annual_expense or 0.0
+                annual_spend_display = (
+                    inputs["withdrawal_params"].total_annual_expense or 0.0
+                )
                 st.write(f"- Annual Spending: ${annual_spend_display:,.0f}")
                 if inputs.get("use_wage_based_spending"):
                     replacement_ratio = inputs.get("replacement_ratio", 0.80)
-                    st.write(f"  (wage-based, {replacement_ratio*100:.0f}% of pre-retirement spending)")
-                st.write(f"- CPI Adjustment: {'Yes' if inputs['withdrawal_params'].use_cpi_adjustment else 'No'}")
+                    st.write(
+                        f"  (wage-based, {replacement_ratio*100:.0f}% of pre-retirement spending)"
+                    )
+                st.write(
+                    f"- CPI Adjustment: {'Yes' if inputs['withdrawal_params'].use_cpi_adjustment else 'No'}"
+                )
             else:
                 st.write(f"- Annual Spending: ${annual_spend_display:,.0f}")
                 if inputs.get("use_wage_based_spending"):
                     replacement_ratio = inputs.get("replacement_ratio", 0.80)
-                    st.write(f"  (wage-based, {replacement_ratio*100:.0f}% of pre-retirement spending)")
+                    st.write(
+                        f"  (wage-based, {replacement_ratio*100:.0f}% of pre-retirement spending)"
+                    )
                 st.write(f"- Inflation Rate: {inputs['inflation']*100:.2f}%")
 
         with summary_col2:
@@ -226,10 +271,17 @@ def main():
         # Include category percentages to detect changes in spending distribution
         if wp.expense_categories:
             category_percentages = {
-                cat.name: (cat.percentage if cat.percentage is not None else cat.current_amount) for cat in wp.expense_categories
+                cat.name: (
+                    cat.percentage if cat.percentage is not None else cat.current_amount
+                )
+                for cat in wp.expense_categories
             }
-            inputs_for_hash["category_percentages"] = tuple(sorted(category_percentages.items()))
-    inputs_hash = hashlib.md5(json.dumps(inputs_for_hash, sort_keys=True, default=str).encode()).hexdigest()
+            inputs_for_hash["category_percentages"] = tuple(
+                sorted(category_percentages.items())
+            )
+    inputs_hash = hashlib.md5(
+        json.dumps(inputs_for_hash, sort_keys=True, default=str).encode()
+    ).hexdigest()
 
     # Check if inputs have changed - if so, clear ALL cached simulation data
     inputs_changed = False
@@ -273,12 +325,16 @@ def main():
                 )
 
             # Align weights with available data
-            weights = align_weights_with_data(inputs["weights"], list(returns_df.columns))
+            weights = align_weights_with_data(
+                inputs["weights"], list(returns_df.columns)
+            )
 
             # Get annual spending (wage-based calculation happens in simulation service)
             annual_spend_value = inputs["annual_spend"] or 0.0
             if inputs.get("withdrawal_params"):
-                annual_spend_value = inputs["withdrawal_params"].total_annual_expense or 0.0
+                annual_spend_value = (
+                    inputs["withdrawal_params"].total_annual_expense or 0.0
+                )
 
             # Create simulation parameters
             params = SimulationParams(
@@ -299,12 +355,16 @@ def main():
                 current_year=inputs.get("current_year"),
                 use_wage_based_spending=inputs.get("use_wage_based_spending", False),
                 replacement_ratio=inputs.get("replacement_ratio"),
-                pre_retire_spending_tracked=inputs.get("pre_retire_spending_tracked", False),
+                pre_retire_spending_tracked=inputs.get(
+                    "pre_retire_spending_tracked", False
+                ),
             )
 
             # Run simulation
             st.subheader("Simulation Results")
-            st.markdown("**Hybrid approach: historical data for accumulation phase, Monte Carlo projections for retirement phase**")
+            st.markdown(
+                "**Hybrid approach: historical data for accumulation phase, Monte Carlo projections for retirement phase**"
+            )
 
             with st.spinner("Running simulation..."):
                 simulation_result = simulation_service.run_simulation(
@@ -350,26 +410,40 @@ def main():
         results.display_data_warning(simulation_result, total_years)
 
         # Display validation messages
-        if simulation_result.pre_retire_avg_spending is not None and simulation_result.pre_retire_avg_spending > 0:
+        if (
+            simulation_result.pre_retire_avg_spending is not None
+            and simulation_result.pre_retire_avg_spending > 0
+        ):
             retirement_spending = inputs.get("annual_spend") or 0.0
             if inputs.get("withdrawal_params"):
-                retirement_spending = inputs["withdrawal_params"].total_annual_expense or 0.0
+                retirement_spending = (
+                    inputs["withdrawal_params"].total_annual_expense or 0.0
+                )
             if retirement_spending > 0:
                 ratio = retirement_spending / simulation_result.pre_retire_avg_spending
                 if 0.70 <= ratio <= 0.90:
-                    st.success(f"✓ Retirement spending is {ratio*100:.0f}% of pre-retirement average (typical range: 70-90%)")
+                    st.success(
+                        f"✓ Retirement spending is {ratio*100:.0f}% of pre-retirement average (typical range: 70-90%)"
+                    )
                 elif 0.90 < ratio <= 1.00:
-                    st.warning(f"⚠ Retirement spending is {ratio*100:.0f}% of pre-retirement average (high - consider reducing)")
+                    st.warning(
+                        f"⚠ Retirement spending is {ratio*100:.0f}% of pre-retirement average (high - consider reducing)"
+                    )
                 elif ratio > 1.00:
                     excess_pct = (ratio - 1.0) * 100
-                    st.error(f"⚠ Retirement spending exceeds pre-retirement average by {excess_pct:.0f}% (unusual - may be unsustainable)")
+                    st.error(
+                        f"⚠ Retirement spending exceeds pre-retirement average by {excess_pct:.0f}% (unusual - may be unsustainable)"
+                    )
                 else:
                     st.info(
                         f"ℹ Retirement spending is {ratio*100:.0f}% of pre-retirement average (low - may indicate conservative planning)"
                     )
 
         # Display early retirement metrics
-        if simulation_result.earliest_retirement_ages is not None and len(simulation_result.earliest_retirement_ages) > 0:
+        if (
+            simulation_result.earliest_retirement_ages is not None
+            and len(simulation_result.earliest_retirement_ages) > 0
+        ):
             median_earliest = np.median(simulation_result.earliest_retirement_ages)
             p10_earliest = np.percentile(simulation_result.earliest_retirement_ages, 10)
             p90_earliest = np.percentile(simulation_result.earliest_retirement_ages, 90)
@@ -405,7 +479,11 @@ def main():
             stored_params = None
             if simulation_result is not None and not inputs_changed:
                 stored_params = st.session_state.get("simulation_params")
-            if stored_params and stored_params.use_wage_based_savings and stored_params.education_level:
+            if (
+                stored_params
+                and stored_params.use_wage_based_savings
+                and stored_params.education_level
+            ):
                 current_year = stored_params.current_year or datetime.now().year
                 try:
                     charts.plot_savings_and_returns_breakdown(
@@ -425,12 +503,18 @@ def main():
         # Plot interactive portfolio progress chart (replaces terminal wealth histogram)
         portfolio_weights_dict = None
         if "portfolio_weights" in st.session_state:
-            portfolio_weights_dict = {k: v for k, v in st.session_state["portfolio_weights"].items() if v > 0}
+            portfolio_weights_dict = {
+                k: v for k, v in st.session_state["portfolio_weights"].items() if v > 0
+            }
 
         # Use stored values from current simulation result (only if result exists and matches)
         if simulation_result is not None and not inputs_changed:
-            stored_pre_retire_years = st.session_state.get("simulation_pre_retire_years", pre_retire_years)
-            stored_current_age = st.session_state.get("simulation_current_age", inputs["current_age"])
+            stored_pre_retire_years = st.session_state.get(
+                "simulation_pre_retire_years", pre_retire_years
+            )
+            stored_current_age = st.session_state.get(
+                "simulation_current_age", inputs["current_age"]
+            )
         else:
             # Use current inputs if no valid cached simulation
             stored_pre_retire_years = pre_retire_years
