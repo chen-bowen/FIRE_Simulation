@@ -29,15 +29,21 @@ class ResultsComponent:
 
         with col2:
             median_terminal = np.median(result.terminal_balances)
-            # Format in millions for better readability
+            # Format with appropriate units for better readability
             abs_terminal = abs(median_terminal)
             sign = "-" if median_terminal < 0 else ""
-            if abs_terminal >= 1e6:
+            if abs_terminal >= 1e9:
+                # Billions: show 1-2 decimal places
+                wealth_display = f"{sign}${abs_terminal/1e9:.2f}B"
+            elif abs_terminal >= 1e6:
+                # Millions: show 1-2 decimal places
                 wealth_display = f"{sign}${abs_terminal/1e6:.2f}M"
             elif abs_terminal >= 1e3:
+                # Thousands: show 1 decimal place
                 wealth_display = f"{sign}${abs_terminal/1e3:.1f}K"
             else:
-                wealth_display = f"{sign}${abs_terminal:.0f}"
+                # Less than 1000: show whole number
+                wealth_display = f"{sign}${abs_terminal:,.0f}"
             st.metric(
                 "Median Terminal Wealth",
                 wealth_display,
