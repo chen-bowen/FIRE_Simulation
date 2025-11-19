@@ -41,9 +41,7 @@ class ChartComponent:
         """Check if a ticker is a crypto asset."""
         return self.data_service.is_crypto_ticker(ticker)
 
-    def plot_simulation_paths(
-        self, result: SimulationResult, title: str, current_age: int = None
-    ) -> None:
+    def plot_simulation_paths(self, result: SimulationResult, title: str, current_age: int = None) -> None:
         """Plot simulation paths with percentile bands and sample paths.
 
         Args:
@@ -171,7 +169,7 @@ class ChartComponent:
         # This helps prevent scroll jumping when radio buttons change
         with st.container():
             # Interactive controls
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
 
             with col1:
                 metric_type = st.radio(
@@ -187,8 +185,42 @@ class ChartComponent:
                     key="portfolio_chart_type",
                 )
 
+            with col3:
+                # Only show log scale checkbox for Portfolio metric type
+                # Will be conditionally shown below if extreme growth is detected
+                use_log_scale = False
+
             # Add a small spacer to maintain visual consistency
             st.markdown("<br>", unsafe_allow_html=True)
+
+            # Detect extreme growth for Portfolio Min/Max/Mean charts
+            needs_split_view = False
+            growth_message = ""
+            view_type = "full"
+
+            if chart_type == "Min/Max/Mean" and metric_type == "Portfolio":
+                needs_split_view, growth_message = self._detect_extreme_growth(result)
+
+                # Add view selector and log scale checkbox if extreme growth detected
+                if needs_split_view:
+                    # Show log scale checkbox only when extreme growth is detected
+                    use_log_scale = st.checkbox(
+                        "Log scale",
+                        value=False,
+                        key="portfolio_log_scale",
+                        help="Use logarithmic scale for better visualization of extreme values",
+                    )
+
+                    view_selection = st.radio(
+                        "View Type",
+                        ["Early Years", "Full Timeline"],
+                        index=0,  # Default to Early Years
+                        key="portfolio_view_type",
+                        help="Early Years shows first 15 years with better detail. Full Timeline shows complete simulation.",
+                    )
+                    view_type = "early_years" if view_selection == "Early Years" else "full"
+                else:
+                    view_type = "full"
 
             # Render appropriate chart based on selections
             if chart_type == "Min/Max/Mean":
@@ -200,11 +232,11 @@ class ChartComponent:
                         current_year,
                         pre_retire_years,
                         annual_spend,
+                        use_log_scale=use_log_scale,
+                        view_type=view_type,
                     )
                 else:  # Spending
-                    self._plot_spending_quantiles(
-                        result, "Spending Quantiles", current_age, current_year
-                    )
+                    self._plot_spending_quantiles(result, "Spending Quantiles", current_age, current_year)
             else:  # Spending vs Returns
                 # Get pre_retire_years from stored params if available
                 pre_retire_years = None
@@ -212,9 +244,7 @@ class ChartComponent:
                     stored_params = st.session_state.get("simulation_params")
                     if stored_params:
                         pre_retire_years = stored_params.pre_retire_years
-                self._plot_spending_vs_returns(
-                    result, current_year, initial_balance, pre_retire_years
-                )
+                self._plot_spending_vs_returns(result, current_year, initial_balance, pre_retire_years)
 
             # Add note about today's dollars (styled like examples)
             st.markdown(
@@ -224,6 +254,53 @@ class ChartComponent:
                 unsafe_allow_html=True,
             )
 
+    def _detect_extreme_growth(
+        self,
+        result: SimulationResult,
+        early_years: int = 15,
+    ) -> tuple[bool, str]:
+        """Detect if portfolio growth is extreme enough to warrant split view.
+
+        Args:
+            result: Simulation result data
+            early_years: Number of years to consider as "early" period (default: 15)
+
+        Returns:
+            tuple: (is_extreme: bool, explanation: str)
+        """
+        early_periods = min(early_years * result.periods_per_year, len(result.median_path))
+
+        if early_periods == 0 or len(result.median_path) == 0:
+            return False, ""
+
+        early_values = result.median_path[:early_periods]
+        early_max = np.max(early_values)
+        early_min = max(np.min(early_values), 1)  # Avoid division by zero
+
+        full_max = np.max(result.median_path)
+        full_min = max(np.min(result.median_path), 1)
+
+        # Check ratio: if max/full_min > 100x, growth is extreme
+        ratio_threshold = 100
+        value_ratio = full_max / full_min if full_min > 0 else 0
+
+        # Check if early range is compressed: early_max represents < 5% of full range
+        full_range = full_max - full_min
+        early_range_pct = (early_max - full_min) / full_range if full_range > 0 else 0
+
+        is_extreme = value_ratio > ratio_threshold or early_range_pct < 0.05
+
+        if is_extreme:
+            explanation = (
+                f"Portfolio growth spans {value_ratio:.0f}x range. "
+                f"Early years (first {early_years}) show compressed on full timeline. "
+                f"Split view helps visualize early growth patterns."
+            )
+        else:
+            explanation = ""
+
+        return is_extreme, explanation
+
     def _plot_portfolio_quantiles(
         self,
         result: SimulationResult,
@@ -232,6 +309,8 @@ class ChartComponent:
         current_year: int = None,
         pre_retire_years: int = None,
         annual_spend: float = None,
+        use_log_scale: bool = False,
+        view_type: str = "full",
     ) -> None:
         """Plot portfolio quantiles with shaded bands (Min/Max/Mean view).
 
@@ -242,6 +321,8 @@ class ChartComponent:
             current_year: Current year for calendar year x-axis labels (optional)
             pre_retire_years: Number of years until retirement (optional)
             annual_spend: Annual retirement spending amount (optional)
+            use_log_scale: Whether to use logarithmic y-axis scale
+            view_type: "early_years" for first 15 years, "full" for complete timeline
         """
         from datetime import datetime
 
@@ -261,27 +342,54 @@ class ChartComponent:
             x = time_periods
             xaxis_title = "Years"
 
+        # Calculate early years period for filtering
+        early_years = 15
+        early_years_periods = early_years * result.periods_per_year
+
+        # Limit to retirement if earlier than 15 years
+        if pre_retire_years is not None and pre_retire_years > 0:
+            pre_retire_periods = int(pre_retire_years * result.periods_per_year)
+            if view_type == "early_years":
+                early_years_periods = min(early_years_periods, pre_retire_periods)
+
+        # Ensure we don't exceed available data and have at least 1 period
+        early_years_periods = max(1, min(early_years_periods, len(result.median_path)))
+
+        # Filter data for early view
+        if view_type == "early_years":
+            x = x[:early_years_periods]
+            result_p10_path = result.p10_path[:early_years_periods]
+            result_median_path = result.median_path[:early_years_periods]
+            result_p90_path = result.p90_path[:early_years_periods]
+        else:
+            result_p10_path = result.p10_path
+            result_median_path = result.median_path
+            result_p90_path = result.p90_path
+
         fig = go.Figure()
 
         # Calculate additional percentiles for richer visualization
-        if (
-            result.sample_paths is not None
-            and len(result.sample_paths) > 0
-            and result.sample_paths.shape[1] == len(result.median_path)
-        ):
+        p25 = None
+        p75 = None
+        if result.sample_paths is not None and len(result.sample_paths) > 0 and result.sample_paths.shape[1] == len(result.median_path):
             # Use sample paths to calculate more percentiles
-            p25 = np.percentile(result.sample_paths, 25, axis=0)
-            p75 = np.percentile(result.sample_paths, 75, axis=0)
+            if view_type == "early_years":
+                sample_paths_filtered = result.sample_paths[:, :early_years_periods]
+                p25 = np.percentile(sample_paths_filtered, 25, axis=0)
+                p75 = np.percentile(sample_paths_filtered, 75, axis=0)
+            else:
+                p25 = np.percentile(result.sample_paths, 25, axis=0)
+                p75 = np.percentile(result.sample_paths, 75, axis=0)
         else:
             # Fallback to interpolated percentiles based on P10, median, P90
-            p25 = result.p10_path + (result.median_path - result.p10_path) * 0.75
-            p75 = result.median_path + (result.p90_path - result.median_path) * 0.75
+            p25 = result_p10_path + (result_median_path - result_p10_path) * 0.75
+            p75 = result_median_path + (result_p90_path - result_median_path) * 0.75
 
         # Add shaded confidence band: P10 to P90
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=result.p90_path,
+                y=result_p90_path,
                 name="P90",
                 line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
                 showlegend=False,
@@ -291,7 +399,7 @@ class ChartComponent:
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=result.p10_path,
+                y=result_p10_path,
                 name="P10",
                 line=dict(color="rgba(26, 188, 156, 0.0)", width=0),
                 fill="tonexty",
@@ -329,7 +437,7 @@ class ChartComponent:
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=result.p90_path,
+                y=result_p90_path,
                 name="P90",
                 line=dict(color="#1abc9c", width=1.5, dash="dash"),
                 showlegend=False,
@@ -349,7 +457,7 @@ class ChartComponent:
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=result.median_path,
+                y=result_median_path,
                 name="Median",
                 line=dict(color="#1abc9c", width=2.5),
                 showlegend=False,
@@ -369,7 +477,7 @@ class ChartComponent:
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=result.p10_path,
+                y=result_p10_path,
                 name="P10",
                 line=dict(color="#1abc9c", width=1.5, dash="dash"),
                 showlegend=False,
@@ -394,7 +502,7 @@ class ChartComponent:
             else:
                 retirement_annotation = "Planned Retirement"
 
-            # Only add line if retirement is within the simulation period
+            # Only add line if retirement is within the current view period
             if retire_x >= x[0] and retire_x <= x[-1]:
                 fig.add_vline(
                     x=retire_x,
@@ -415,16 +523,16 @@ class ChartComponent:
             can_retire_idx = None
             if pre_retire_years is not None and pre_retire_years > 0:
                 # Only check during accumulation phase (skip if already retired)
-                max_accumulation_periods = int(
-                    pre_retire_years * result.periods_per_year
-                )
-                accumulation_path = result.median_path[:max_accumulation_periods]
+                max_accumulation_periods = int(pre_retire_years * result.periods_per_year)
+                # Use filtered median path if in early view
+                accumulation_path = result_median_path[: min(max_accumulation_periods, len(result_median_path))]
                 # Find first index where portfolio >= threshold
-                threshold_reached = np.where(accumulation_path >= retirement_threshold)[
-                    0
-                ]
+                threshold_reached = np.where(accumulation_path >= retirement_threshold)[0]
                 if len(threshold_reached) > 0:
                     can_retire_idx = threshold_reached[0]
+                    # Ensure index is within current view
+                    if view_type == "early_years" and can_retire_idx >= len(x):
+                        can_retire_idx = None
 
             # Add horizontal line for retirement threshold
             # Format threshold with better description explaining the 4% rule
@@ -442,15 +550,13 @@ class ChartComponent:
             # Add marker showing when threshold is first reached
             if can_retire_idx is not None and can_retire_idx < len(x):
                 can_retire_x = x[can_retire_idx]
-                can_retire_y = result.median_path[can_retire_idx]
+                can_retire_y = result_median_path[can_retire_idx]
 
                 # Calculate age at "can retire" point
                 if current_age is not None:
                     if current_year is not None:
                         # X-axis is in years, calculate age
-                        can_retire_age = int(
-                            current_age + (can_retire_x - current_year)
-                        )
+                        can_retire_age = int(current_age + (can_retire_x - current_year))
                     elif xaxis_title == "Age":
                         # X-axis is already in age
                         can_retire_age = int(can_retire_x)
@@ -482,21 +588,15 @@ class ChartComponent:
                     if can_retire_x < retire_x:
                         # Can retire is before planned, put annotation on left side
                         annotation_pos = "left"
-                        annotation_shift = dict(
-                            font_size=10, font_color="#f39c12", xshift=-15
-                        )
+                        annotation_shift = dict(font_size=10, font_color="#f39c12", xshift=-15)
                     else:
                         # Can retire is after planned, put annotation on right side
                         annotation_pos = "right"
-                        annotation_shift = dict(
-                            font_size=10, font_color="#f39c12", xshift=15
-                        )
+                        annotation_shift = dict(font_size=10, font_color="#f39c12", xshift=15)
                 else:
                     # Lines are far enough apart, use top position like planned retirement
                     annotation_pos = "top"
-                    annotation_shift = dict(
-                        font_size=10, font_color="#f39c12", yshift=10
-                    )
+                    annotation_shift = dict(font_size=10, font_color="#f39c12", yshift=10)
 
                 # Add vertical line at "can retire" point
                 fig.add_vline(
@@ -527,35 +627,195 @@ class ChartComponent:
                     )
                 )
 
+        # Calculate intelligent y-axis range to handle extreme values
+        # Use percentile-based approach: focus on P5-P95 range with some padding
+        all_portfolio_values = np.concatenate(
+            [
+                result_p10_path,
+                result_median_path,
+                result_p90_path,
+            ]
+        )
+
+        # Add p25 and p75 if they were calculated
+        if p25 is not None and p75 is not None:
+            all_portfolio_values = np.concatenate(
+                [
+                    all_portfolio_values,
+                    p25,
+                    p75,
+                ]
+            )
+
+        # Calculate percentiles for better scaling - use more conservative percentiles to handle outliers
+        p10_value = np.percentile(all_portfolio_values, 10)
+        p90_value = np.percentile(all_portfolio_values, 90)
+        median_value = np.median(all_portfolio_values)
+
+        # For full timeline view, ensure y_min accounts for early small values
+        # Calculate minimum from early period (first 20% of timeline) to prevent compression
+        if view_type == "full" and len(all_portfolio_values) > 0:
+            early_period_length = max(1, int(len(all_portfolio_values) * 0.2))  # First 20% of periods
+            early_values = all_portfolio_values[:early_period_length]
+            early_min = np.min(early_values) if len(early_values) > 0 else 0
+            # For full timeline, start from 0 or very close to early minimum to show early growth
+            actual_min = max(0, early_min * 0.95)  # Start slightly below early min, but not negative
+        else:
+            actual_min = p10_value
+
+        # Add retirement threshold to the range calculation if available
+        if annual_spend is not None and annual_spend > 0:
+            retirement_threshold = annual_spend * 25
+            # Use P90 or 3x median, whichever is smaller, to cap extreme outliers
+            # Also cap at 10x retirement threshold as an absolute maximum
+            reasonable_max = min(p90_value, median_value * 3) if median_value > 0 else p90_value
+            absolute_max = retirement_threshold * 10  # Never show more than 10x threshold
+            reasonable_max = min(reasonable_max, absolute_max)
+            # For full view, ensure we show from 0 to capture early growth
+            if view_type == "full":
+                y_min = 0  # Start from 0 to show early growth clearly
+            else:
+                y_min = min(actual_min, retirement_threshold * 0.5)  # Show below threshold too
+            y_max = max(reasonable_max, retirement_threshold * 1.5)  # Cap at reasonable max
+        else:
+            # Use P90 or 3x median, whichever is smaller
+            # Also cap at 100x the median as an absolute maximum
+            reasonable_max = min(p90_value, median_value * 3) if median_value > 0 else p90_value
+            if median_value > 0:
+                absolute_max = median_value * 100  # Never show more than 100x median
+                reasonable_max = min(reasonable_max, absolute_max)
+            # For full view, start from 0 to show early growth
+            if view_type == "full":
+                y_min = 0  # Start from 0 to show early growth clearly
+            else:
+                y_min = actual_min
+            y_max = reasonable_max
+
+        # Configure y-axis based on scale type and view type
+        if use_log_scale:
+            # For log scale, use actual data min/max with padding for auto-scaling
+            data_min = np.min(all_portfolio_values)
+            data_max = np.max(all_portfolio_values)
+
+            # Ensure positive values for log scale
+            data_min_log = max(1, data_min)  # Log scale requires positive values
+
+            # Add padding (10% on each side in log space)
+            if data_max > data_min_log:
+                # Calculate padding in log space
+                log_min = np.log10(data_min_log)
+                log_max = np.log10(data_max)
+                log_range = log_max - log_min
+                y_min_log = max(1, 10 ** (log_min - log_range * 0.1))
+                y_max_log = 10 ** (log_max + log_range * 0.1)
+            else:
+                y_min_log = max(1, data_min_log * 0.9)
+                y_max_log = data_max * 1.1 if data_max > 0 else 1000
+
+            yaxis_config = dict(
+                type="log",
+                range=[np.log10(y_min_log), np.log10(y_max_log)],
+            )
+        else:
+            # For linear scale
+            if view_type == "full":
+                # For full timeline view, use actual data min/max with padding for auto-scaling
+                # Calculate from actual data values, not percentiles, to avoid compression
+                data_min = np.min(all_portfolio_values)
+                data_max = np.max(all_portfolio_values)
+
+                # Add padding (10% on each side) but don't force to start at 0
+                data_range = data_max - data_min
+                if data_range > 0:
+                    y_min_auto = max(0, data_min - data_range * 0.1)  # Don't go below 0
+                    y_max_auto = data_max + data_range * 0.1
+                else:
+                    y_min_auto = max(0, data_min * 0.9)
+                    y_max_auto = data_max * 1.1 if data_max > 0 else 1000
+
+                yaxis_config = dict(
+                    type="linear",
+                    range=[y_min_auto, y_max_auto],
+                )
+            else:
+                # For early years view, use calculated range with padding
+                padding_pct = 0.05
+                y_range = y_max - y_min
+                y_min_padded = max(0, y_min - y_range * padding_pct)  # Don't go below 0
+                y_max_padded = y_max + y_range * padding_pct
+
+                # Ensure minimum range for readability
+                if y_max_padded - y_min_padded < 1000:
+                    center = (y_min_padded + y_max_padded) / 2
+                    y_min_padded = max(0, center - 500)
+                    y_max_padded = center + 500
+
+                yaxis_config = dict(
+                    type="linear",
+                    range=[y_min_padded, y_max_padded],
+                )
+
+        # Update title based on view type
+        display_title = title
+        if view_type == "early_years":
+            display_title = f"{title} (Early Years - First {early_years} Years)"
+
         fig.update_layout(
-            title=title,
+            title=display_title,
             xaxis_title=xaxis_title,
             yaxis_title="Portfolio Value ($)",
             hovermode="x unified",
             showlegend=True,
+            yaxis=yaxis_config,
         )
 
         # Format x-axis
-        if current_year is not None:
-            max_year = current_year + (result.horizon_periods / result.periods_per_year)
-            year_range = max_year - current_year
-            if year_range > 30:
-                dtick = 10
-            elif year_range > 15:
-                dtick = 5
+        if view_type == "early_years":
+            # For early view, use smaller tick intervals (2-3 years)
+            if current_year is not None:
+                year_range = x[-1] - x[0]
+                if year_range > 10:
+                    dtick = 3
+                else:
+                    dtick = 2
+                fig.update_xaxes(tickmode="linear", dtick=dtick)
+            elif current_age is not None:
+                age_range = x[-1] - x[0]
+                if age_range > 10:
+                    dtick = 3
+                else:
+                    dtick = 2
+                fig.update_xaxes(tickmode="linear", dtick=dtick)
             else:
-                dtick = 2
-            fig.update_xaxes(tickmode="linear", dtick=dtick)
-        elif current_age is not None:
-            max_age = current_age + (result.horizon_periods / result.periods_per_year)
-            age_range = max_age - current_age
-            if age_range > 30:
-                dtick = 10
-            elif age_range > 15:
-                dtick = 5
-            else:
-                dtick = 2
-            fig.update_xaxes(tickmode="linear", dtick=dtick)
+                # Years from start
+                year_range = x[-1] - x[0]
+                if year_range > 10:
+                    dtick = 3
+                else:
+                    dtick = 2
+                fig.update_xaxes(tickmode="linear", dtick=dtick)
+        else:
+            # Full view: use existing logic
+            if current_year is not None:
+                max_year = current_year + (result.horizon_periods / result.periods_per_year)
+                year_range = max_year - current_year
+                if year_range > 30:
+                    dtick = 10
+                elif year_range > 15:
+                    dtick = 5
+                else:
+                    dtick = 2
+                fig.update_xaxes(tickmode="linear", dtick=dtick)
+            elif current_age is not None:
+                max_age = current_age + (result.horizon_periods / result.periods_per_year)
+                age_range = max_age - current_age
+                if age_range > 30:
+                    dtick = 10
+                elif age_range > 15:
+                    dtick = 5
+                else:
+                    dtick = 2
+                fig.update_xaxes(tickmode="linear", dtick=dtick)
 
         st.plotly_chart(fig, use_container_width=True)
 
@@ -642,9 +902,7 @@ class ChartComponent:
             current_year = datetime.now().year
 
         if result.spending_over_time is None or result.returns_over_time is None:
-            st.warning(
-                "Spending and returns data not available for this visualization."
-            )
+            st.warning("Spending and returns data not available for this visualization.")
             return
 
         ppy = result.periods_per_year
@@ -679,18 +937,14 @@ class ChartComponent:
             # During retirement: use portfolio withdrawals
             if year_idx < pre_retire_years:
                 # Pre-retirement: use tracked pre-retirement spending if available
-                if result.pre_retire_spending_by_year is not None and year_idx < len(
-                    result.pre_retire_spending_by_year
-                ):
+                if result.pre_retire_spending_by_year is not None and year_idx < len(result.pre_retire_spending_by_year):
                     year_spending = result.pre_retire_spending_by_year[year_idx]
                 else:
                     # Fallback: no spending shown during accumulation (portfolio not being withdrawn from)
                     year_spending = 0.0
             else:
                 # Retirement: sum portfolio withdrawals for the year
-                year_spending = np.sum(
-                    result.spending_over_time[start_period:end_period]
-                )
+                year_spending = np.sum(result.spending_over_time[start_period:end_period])
 
             # Convert percentage returns into dollar growth on the median portfolio path
             year_return_dollars = 0.0
@@ -781,10 +1035,7 @@ class ChartComponent:
         )
 
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(
-            "Returns reflect investment growth on the median portfolio after each year's "
-            "contributions and withdrawals."
-        )
+        st.caption("Returns reflect investment growth on the median portfolio after each year's " "contributions and withdrawals.")
 
     def plot_terminal_wealth_histogram(
         self,
@@ -812,15 +1063,9 @@ class ChartComponent:
         # Get portfolio weights from session state if not provided
         if portfolio_weights is None:
             if "portfolio_weights" in st.session_state:
-                portfolio_weights = {
-                    k: v
-                    for k, v in st.session_state["portfolio_weights"].items()
-                    if v > 0
-                }
+                portfolio_weights = {k: v for k, v in st.session_state["portfolio_weights"].items() if v > 0}
             else:
-                st.warning(
-                    "Portfolio weights not available. Cannot display allocation breakdown."
-                )
+                st.warning("Portfolio weights not available. Cannot display allocation breakdown.")
                 return
 
         if not portfolio_weights:
@@ -915,11 +1160,7 @@ class ChartComponent:
         dollar_amounts = {}
         actual_percentages = {}
 
-        if (
-            returns_df is not None
-            and initial_balance is not None
-            and asset_class_mapping is not None
-        ):
+        if returns_df is not None and initial_balance is not None and asset_class_mapping is not None:
             # Find the last rebalancing point
             # Rebalancing happens at the END of each year, so:
             # - For year N, rebalancing happens at period (N * ppy - 1) or start of year N+1
@@ -945,16 +1186,12 @@ class ChartComponent:
 
             # Calculate how many periods since last rebalancing
             periods_since_rebalance = period_idx - rebalance_period + 1
-            periods_since_rebalance = max(
-                1, min(periods_since_rebalance, ppy)
-            )  # Clamp to current year
+            periods_since_rebalance = max(1, min(periods_since_rebalance, ppy))  # Clamp to current year
 
             # Calculate dollar amounts at last rebalancing (target allocation)
             rebalanced_amounts = {}
             for ac, weight_pct in zip(asset_classes, weights_array):
-                rebalanced_amounts[ac] = rebalanced_portfolio_value * (
-                    weight_pct / 100.0
-                )
+                rebalanced_amounts[ac] = rebalanced_portfolio_value * (weight_pct / 100.0)
 
             # Calculate returns since last rebalancing for each asset class
             asset_returns_since_rebalance = {}
@@ -965,11 +1202,7 @@ class ChartComponent:
                     # Get tickers for this asset class
                     tickers = asset_class_mapping[ac]
                     # Find matching tickers in returns_df
-                    matching_tickers = (
-                        [t for t in tickers if t in returns_df.columns]
-                        if returns_df is not None
-                        else []
-                    )
+                    matching_tickers = [t for t in tickers if t in returns_df.columns] if returns_df is not None else []
                     if matching_tickers:
                         # Use first matching ticker
                         ticker = matching_tickers[0]
@@ -978,38 +1211,22 @@ class ChartComponent:
                             start_period = rebalance_period
                             end_period = min(period_idx + 1, available_periods)
 
-                            if (
-                                end_period > start_period
-                                and start_period < available_periods
-                            ):
+                            if end_period > start_period and start_period < available_periods:
                                 # Get returns for the current year (since last rebalancing)
-                                year_returns = (
-                                    returns_df[ticker]
-                                    .iloc[start_period:end_period]
-                                    .values
-                                )
+                                year_returns = returns_df[ticker].iloc[start_period:end_period].values
                                 if len(year_returns) > 0:
                                     # Calculate cumulative return for this year
                                     cumulative_return = np.prod(1 + year_returns) - 1
 
                                     # If we need to extend beyond available data, use average
                                     if end_period < period_idx + 1:
-                                        avg_return_per_period = (
-                                            np.mean(year_returns)
-                                            if len(year_returns) > 0
-                                            else 0.0
-                                        )
-                                        additional_periods = (
-                                            period_idx + 1
-                                        ) - end_period
+                                        avg_return_per_period = np.mean(year_returns) if len(year_returns) > 0 else 0.0
+                                        additional_periods = (period_idx + 1) - end_period
                                         cumulative_return = (1 + cumulative_return) * (
-                                            (1 + avg_return_per_period)
-                                            ** additional_periods
+                                            (1 + avg_return_per_period) ** additional_periods
                                         ) - 1
 
-                                    asset_returns_since_rebalance[
-                                        ac
-                                    ] = cumulative_return
+                                    asset_returns_since_rebalance[ac] = cumulative_return
                                 else:
                                     asset_returns_since_rebalance[ac] = 0.0
                             else:
@@ -1034,11 +1251,7 @@ class ChartComponent:
                     crypto_asset_class = ac
                 elif ac in asset_class_mapping:
                     tickers = asset_class_mapping[ac]
-                    matching_tickers = (
-                        [t for t in tickers if t in returns_df.columns]
-                        if returns_df is not None
-                        else []
-                    )
+                    matching_tickers = [t for t in tickers if t in returns_df.columns] if returns_df is not None else []
                     if matching_tickers:
                         ticker = matching_tickers[0]
                         if self._is_crypto_ticker(ticker):
@@ -1071,9 +1284,7 @@ class ChartComponent:
             # Calculate actual percentages
             if portfolio_value > 0:
                 for ac in asset_classes:
-                    actual_percentages[ac] = (
-                        dollar_amounts[ac] / portfolio_value
-                    ) * 100.0
+                    actual_percentages[ac] = (dollar_amounts[ac] / portfolio_value) * 100.0
             else:
                 # Fallback to original weights if calculation fails
                 for ac, weight_pct in zip(asset_classes, weights_array):
@@ -1125,10 +1336,7 @@ class ChartComponent:
             colors = [color_map.get(label, "#95a5a6") for label in labels]
 
             # Create hover text with both dollar amount and percentage
-            hover_text = [
-                f"{label}<br>${amt:,.0f}<br>{pct}"
-                for label, amt, pct in zip(labels, values, percentages)
-            ]
+            hover_text = [f"{label}<br>${amt:,.0f}<br>{pct}" for label, amt, pct in zip(labels, values, percentages)]
 
             fig = go.Figure(
                 data=[
@@ -1175,9 +1383,7 @@ class ChartComponent:
             st.metric("Total Value", f"${portfolio_value:,.0f}")
 
             # Show P10-P90 range
-            st.caption(
-                f"Range: ${portfolio_value_p10:,.0f} (P10) - ${portfolio_value_p90:,.0f} (P90)"
-            )
+            st.caption(f"Range: ${portfolio_value_p10:,.0f} (P10) - ${portfolio_value_p90:,.0f} (P90)")
 
             st.markdown("#### Allocation")
             for ac, amt in dollar_amounts.items():
@@ -1246,22 +1452,14 @@ class ChartComponent:
             if i % ppy == 0 and i > 0:  # End of a year (skip i=0 as it's already added)
                 # Get wage for this age (use the year we're ending)
                 age = current_age + int(years_into_accumulation)
-                weekly_wage = self.data_service.get_wage_for_age(
-                    params.education_level, current_age, current_year, age
-                )
+                weekly_wage = self.data_service.get_wage_for_age(params.education_level, current_age, current_year, age)
                 if weekly_wage is None:
-                    weekly_wage = self.data_service.get_income_for_education_level(
-                        params.education_level
-                    )
+                    weekly_wage = self.data_service.get_income_for_education_level(params.education_level)
                     if weekly_wage is None:
                         continue
-                    growth_rate = self.data_service.calculate_wage_growth_rate(
-                        params.education_level
-                    )
+                    growth_rate = self.data_service.calculate_wage_growth_rate(params.education_level)
                     if growth_rate:
-                        weekly_wage = weekly_wage * (
-                            (1.0 + growth_rate) ** years_into_accumulation
-                        )
+                        weekly_wage = weekly_wage * ((1.0 + growth_rate) ** years_into_accumulation)
 
                 annual_wage = self.data_service.get_annual_wage(weekly_wage)
                 annual_contrib = annual_wage * params.savings_rate
@@ -1273,9 +1471,7 @@ class ChartComponent:
                 # Portfolio grew from prev_portfolio_balance to portfolio_balance
                 # During this year, we contributed annual_contrib
                 # So: return = portfolio_balance - prev_portfolio_balance - annual_contrib
-                annual_return = (
-                    portfolio_balance - prev_portfolio_balance - annual_contrib
-                )
+                annual_return = portfolio_balance - prev_portfolio_balance - annual_contrib
 
                 # Add this year's contribution to cumulative
                 cumulative_contrib += annual_contrib
@@ -1410,15 +1606,11 @@ class ChartComponent:
 
         # Determine simulation type
         if result.data_limited:
-            simulation_type = (
-                "Hybrid simulation (historical accumulation + Monte Carlo retirement)"
-            )
+            simulation_type = "Hybrid simulation (historical accumulation + Monte Carlo retirement)"
             if result.available_years:
                 simulation_type += f" - {result.available_years:.1f} years of historical data used for accumulation"
         else:
-            simulation_type = (
-                "Hybrid simulation (historical accumulation + Monte Carlo retirement)"
-            )
+            simulation_type = "Hybrid simulation (historical accumulation + Monte Carlo retirement)"
 
         col1, col2 = st.columns(2)
         with col1:

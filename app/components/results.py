@@ -1,5 +1,9 @@
 """Results display component."""
 
+import traceback
+from datetime import datetime
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -202,3 +206,161 @@ class ResultsComponent:
 
             df = pd.DataFrame(stats_data)
             st.dataframe(df, use_container_width=True)
+
+    def display_validation_messages(
+        self, simulation_result: SimulationResult, inputs: dict
+    ) -> None:
+        """Display validation messages for retirement spending and early retirement metrics.
+
+        Args:
+            simulation_result: Simulation result object
+            inputs: Dictionary of user inputs
+        """
+        # Display validation messages
+        if (
+            simulation_result.pre_retire_avg_spending is not None
+            and simulation_result.pre_retire_avg_spending > 0
+        ):
+            retirement_spending = inputs.get("annual_spend") or 0.0
+            if inputs.get("withdrawal_params"):
+                retirement_spending = (
+                    inputs["withdrawal_params"].total_annual_expense or 0.0
+                )
+            if retirement_spending > 0:
+                ratio = retirement_spending / simulation_result.pre_retire_avg_spending
+                if 0.70 <= ratio <= 0.90:
+                    st.success(
+                        f"✓ Retirement spending is {ratio*100:.0f}% of pre-retirement average (typical range: 70-90%)"
+                    )
+                elif 0.90 < ratio <= 1.00:
+                    st.warning(
+                        f"⚠ Retirement spending is {ratio*100:.0f}% of pre-retirement average (high - consider reducing)"
+                    )
+                elif ratio > 1.00:
+                    excess_pct = (ratio - 1.0) * 100
+                    st.error(
+                        f"⚠ Retirement spending exceeds pre-retirement average by {excess_pct:.0f}% (unusual - may be unsustainable)"
+                    )
+                else:
+                    st.info(
+                        f"ℹ Retirement spending is {ratio*100:.0f}% of pre-retirement average (low - may indicate conservative planning)"
+                    )
+
+        # Display early retirement metrics
+        if (
+            simulation_result.earliest_retirement_ages is not None
+            and len(simulation_result.earliest_retirement_ages) > 0
+        ):
+            median_earliest = np.median(simulation_result.earliest_retirement_ages)
+            st.info(
+                f"📅 **Earliest Possible Retirement:** age {median_earliest:.0f} \n\n"
+                f"Based on 25x annual expenses rule (4% withdrawal rate)."
+            )
+
+    def display_all_results(
+        self,
+        simulation_result: SimulationResult,
+        inputs: dict,
+        charts,
+        pre_retire_years: int,
+        total_years: int,
+        current_age: int,
+        inputs_changed: bool,
+        returns_df_cached: Optional = None,
+        asset_class_mapping: Optional[dict] = None,
+    ) -> None:
+        """Orchestrate all result displays including tabs and charts.
+
+        Args:
+            simulation_result: Simulation result object
+            inputs: Dictionary of user inputs
+            charts: ChartComponent instance
+            pre_retire_years: Years until retirement
+            total_years: Total planning period in years
+            current_age: Current age
+            inputs_changed: Whether inputs have changed
+            returns_df_cached: Cached returns dataframe
+            asset_class_mapping: Asset class mapping from sidebar
+        """
+        # Display metrics
+        self.display_metrics(simulation_result, "Simulation Results")
+        self.display_data_warning(simulation_result, total_years)
+
+        # Display validation messages
+        self.display_validation_messages(simulation_result, inputs)
+
+        # Create tabs for different visualizations
+        tab1, tab2 = st.tabs(["Portfolio Performance", "Savings & Returns"])
+
+        with tab1:
+            # Plot interactive portfolio chart
+            current_year = datetime.now().year
+            # Get annual spending (wage-based calculation already done in simulation service)
+            annual_spend = inputs.get("annual_spend") or 0.0
+            if inputs.get("withdrawal_params"):
+                annual_spend = inputs["withdrawal_params"].total_annual_expense or 0.0
+
+            charts.plot_interactive_portfolio_chart(
+                simulation_result,
+                title="Portfolio Quantiles",
+                current_age=inputs["current_age"],
+                current_year=current_year,
+                initial_balance=inputs["initial_balance"],
+                pre_retire_years=pre_retire_years,
+                annual_spend=annual_spend if annual_spend > 0 else None,
+            )
+
+        with tab2:
+            # Plot savings contributions and returns breakdown
+            # Only use stored params if they match current simulation (not stale)
+            stored_params = None
+            if simulation_result is not None and not inputs_changed:
+                stored_params = st.session_state.get("simulation_params")
+            if (
+                stored_params
+                and stored_params.use_wage_based_savings
+                and stored_params.education_level
+            ):
+                current_year = stored_params.current_year or datetime.now().year
+                try:
+                    charts.plot_savings_and_returns_breakdown(
+                        stored_params,
+                        simulation_result,
+                        stored_params.current_age or inputs["current_age"],
+                        current_year,
+                    )
+                except Exception as e:
+                    st.error(f"Error displaying savings and returns chart: {str(e)}")
+                    st.code(traceback.format_exc())
+            else:
+                st.info('Enable "Detailed Plan" to see savings and returns breakdown.')
+
+        # Plot interactive portfolio progress chart (replaces terminal wealth histogram)
+        portfolio_weights_dict = None
+        if "portfolio_weights" in st.session_state:
+            portfolio_weights_dict = {
+                k: v for k, v in st.session_state["portfolio_weights"].items() if v > 0
+            }
+
+        # Use stored values from current simulation result (only if result exists and matches)
+        if simulation_result is not None and not inputs_changed:
+            stored_pre_retire_years = st.session_state.get(
+                "simulation_pre_retire_years", pre_retire_years
+            )
+            stored_current_age = st.session_state.get(
+                "simulation_current_age", inputs["current_age"]
+            )
+        else:
+            # Use current inputs if no valid cached simulation
+            stored_pre_retire_years = pre_retire_years
+            stored_current_age = inputs["current_age"]
+
+        charts.plot_terminal_wealth_histogram(
+            simulation_result,
+            pre_retire_years=stored_pre_retire_years,
+            current_age=stored_current_age,
+            portfolio_weights=portfolio_weights_dict,
+            returns_df=returns_df_cached,
+            initial_balance=inputs["initial_balance"],
+            asset_class_mapping=asset_class_mapping,
+        )
