@@ -18,7 +18,7 @@ class ResultsComponent:
         """Display key metrics for a simulation result."""
         st.subheader(title)
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
 
         with col1:
             st.metric(
@@ -50,6 +50,23 @@ class ResultsComponent:
                 f"{result.horizon_periods / result.periods_per_year:.1f} years",
                 help="Total simulation period",
             )
+        
+        with col4:
+            if result.pre_retire_avg_spending is not None and result.pre_retire_avg_spending > 0:
+                st.metric(
+                    "Avg Pre-Retirement Spending",
+                    format_currency(result.pre_retire_avg_spending),
+                    help="Average annual spending during accumulation phase",
+                )
+            elif result.earliest_retirement_ages is not None and len(result.earliest_retirement_ages) > 0:
+                median_earliest = np.median(result.earliest_retirement_ages)
+                st.metric(
+                    "Earliest Retirement",
+                    f"Age {median_earliest:.0f}",
+                    help="Median earliest possible retirement age (25x expenses rule)",
+                )
+            else:
+                st.metric("", "")  # Empty column for alignment
 
     def display_data_warning(self, result: SimulationResult, total_years: int) -> None:
         """Display warning about data limitations."""

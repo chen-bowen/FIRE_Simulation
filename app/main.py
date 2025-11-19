@@ -16,18 +16,19 @@ _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from datetime import datetime  # noqa: E402
+from datetime import datetime
 
-import streamlit as st  # noqa: E402
+import numpy as np
+import streamlit as st
 
-from app.components import (  # noqa: E402
+from app.components import (
     ChartComponent,
     ResultsComponent,
     SidebarComponent,
 )
-from app.schemas import SimulationParams  # noqa: E402
-from app.services import DataService, SimulationService  # noqa: E402
-from app.utils import (  # noqa: E402
+from app.schemas import SimulationParams
+from app.services import DataService, SimulationService
+from app.utils import (
     align_weights_with_data,
     calculate_horizon_years,
     validate_age_inputs,
@@ -108,31 +109,17 @@ def main():
         if inputs.get("withdrawal_params"):
             annual_spend_display = inputs["withdrawal_params"].total_annual_expense or 0.0
 
-        # Calculate wage-based spending if wage-based savings is enabled (overrides both fixed and withdrawal_params)
+        # Show spending label - wage-based if enabled
         spending_label = "Annual Spending"
-        spending_value = f"${annual_spend_display:,.0f}"
         spending_help_text = "Annual retirement spending"
-        if inputs.get("use_wage_based_savings") and inputs.get("education_level"):
-            retire_age = inputs.get("retire_age", 65)
-            current_age = inputs.get("current_age", 35)
-            current_year = inputs.get("current_year")
-            if current_year is None:
-                current_year = datetime.now().year
-
-            # Get wage at retirement age
-            weekly_wage_at_retirement = data_service.get_wage_for_age(inputs["education_level"], current_age, current_year, retire_age)
-            if weekly_wage_at_retirement:
-                annual_wage_at_retirement = data_service.get_annual_wage(weekly_wage_at_retirement)
-                # Use 80% replacement ratio (common retirement standard)
-                replacement_ratio = 0.80
-                annual_spend_display = annual_wage_at_retirement * replacement_ratio
-                spending_value = f"${annual_spend_display:,.0f}"
-                spending_label = "Annual Spending (wage-based)"
-                spending_help_text = f"Wage-based: 80% of ${annual_wage_at_retirement:,.0f} final wage at retirement"
+        if inputs.get("use_wage_based_spending"):
+            replacement_ratio = inputs.get("replacement_ratio", 0.80)
+            spending_label = f"Annual Spending (wage-based)"
+            spending_help_text = f"Wage-based: {replacement_ratio*100:.0f}% of pre-retirement spending"
 
         st.metric(
             spending_label,
-            spending_value,
+            f"${annual_spend_display:,.0f}",
             help=spending_help_text,
         )
 
@@ -193,57 +180,20 @@ def main():
             else:
                 st.write(f"- Annual Contribution: ${inputs['annual_contrib']:,.0f}")
 
-            # Calculate and display annual spending
+            # Display annual spending
             annual_spend_display = inputs.get("annual_spend") or 0.0
             if inputs.get("withdrawal_params"):
                 annual_spend_display = inputs["withdrawal_params"].total_annual_expense or 0.0
-
-                # Override with wage-based if wage-based savings is enabled
-                if inputs.get("use_wage_based_savings") and inputs.get("education_level"):
-                    retire_age = inputs.get("retire_age", 65)
-                    current_age = inputs.get("current_age", 35)
-                    current_year = inputs.get("current_year")
-                    if current_year is None:
-                        current_year = datetime.now().year
-
-                    weekly_wage_at_retirement = data_service.get_wage_for_age(
-                        inputs["education_level"], current_age, current_year, retire_age
-                    )
-                    if weekly_wage_at_retirement:
-                        annual_wage_at_retirement = data_service.get_annual_wage(weekly_wage_at_retirement)
-                        replacement_ratio = 0.80
-                        annual_spend_display = annual_wage_at_retirement * replacement_ratio
-                        st.write(f"- Annual Spending: ${annual_spend_display:,.0f}")
-                        st.write(f"  (wage-based, 80% of ${annual_wage_at_retirement:,.0f} final wage)")
-                    else:
-                        st.write(f"- Annual Spending: ${annual_spend_display:,.0f}")
-                else:
-                    st.write(f"- Annual Spending: ${annual_spend_display:,.0f}")
+                st.write(f"- Annual Spending: ${annual_spend_display:,.0f}")
+                if inputs.get("use_wage_based_spending"):
+                    replacement_ratio = inputs.get("replacement_ratio", 0.80)
+                    st.write(f"  (wage-based, {replacement_ratio*100:.0f}% of pre-retirement spending)")
                 st.write(f"- CPI Adjustment: {'Yes' if inputs['withdrawal_params'].use_cpi_adjustment else 'No'}")
             else:
-                # Check if wage-based spending should be calculated
-                if inputs.get("use_wage_based_savings") and inputs.get("education_level"):
-                    retire_age = inputs.get("retire_age", 65)
-                    current_age = inputs.get("current_age", 35)
-                    current_year = inputs.get("current_year")
-                    if current_year is None:
-                        current_year = datetime.now().year
-
-                    # Get wage at retirement age
-                    weekly_wage_at_retirement = data_service.get_wage_for_age(
-                        inputs["education_level"], current_age, current_year, retire_age
-                    )
-                    if weekly_wage_at_retirement:
-                        annual_wage_at_retirement = data_service.get_annual_wage(weekly_wage_at_retirement)
-                        # Use 80% replacement ratio
-                        replacement_ratio = 0.80
-                        annual_spend_display = annual_wage_at_retirement * replacement_ratio
-                        st.write(f"- Annual Spending: ${annual_spend_display:,.0f}")
-                        st.write(f"  (wage-based, 80% of ${annual_wage_at_retirement:,.0f} final wage)")
-                    else:
-                        st.write(f"- Annual Spending: ${annual_spend_display:,.0f}")
-                else:
-                    st.write(f"- Annual Spending: ${annual_spend_display:,.0f}")
+                st.write(f"- Annual Spending: ${annual_spend_display:,.0f}")
+                if inputs.get("use_wage_based_spending"):
+                    replacement_ratio = inputs.get("replacement_ratio", 0.80)
+                    st.write(f"  (wage-based, {replacement_ratio*100:.0f}% of pre-retirement spending)")
                 st.write(f"- Inflation Rate: {inputs['inflation']*100:.2f}%")
 
         with summary_col2:
@@ -325,29 +275,10 @@ def main():
             # Align weights with available data
             weights = align_weights_with_data(inputs["weights"], list(returns_df.columns))
 
-            # Calculate annual spending - use wage-based if enabled (overrides both fixed and withdrawal_params)
+            # Get annual spending (wage-based calculation happens in simulation service)
             annual_spend_value = inputs["annual_spend"] or 0.0
             if inputs.get("withdrawal_params"):
                 annual_spend_value = inputs["withdrawal_params"].total_annual_expense or 0.0
-
-            # Override with wage-based calculation if wage-based savings is enabled
-            if inputs.get("use_wage_based_savings") and inputs.get("education_level"):
-                # Calculate retirement spending from final wage (80% replacement ratio)
-                retire_age = inputs.get("retire_age", 65)
-                current_age = inputs.get("current_age", 35)
-                current_year = inputs.get("current_year")
-                if current_year is None:
-                    current_year = datetime.now().year
-
-                weekly_wage_at_retirement = data_service.get_wage_for_age(inputs["education_level"], current_age, current_year, retire_age)
-                if weekly_wage_at_retirement:
-                    annual_wage_at_retirement = data_service.get_annual_wage(weekly_wage_at_retirement)
-                    replacement_ratio = 0.80  # 80% replacement ratio
-                    annual_spend_value = annual_wage_at_retirement * replacement_ratio
-
-                    # If withdrawal_params exists, update its total_annual_expense
-                    if inputs.get("withdrawal_params"):
-                        inputs["withdrawal_params"].total_annual_expense = annual_spend_value
 
             # Create simulation parameters
             params = SimulationParams(
@@ -362,9 +293,13 @@ def main():
                 withdrawal_params=inputs.get("withdrawal_params"),  # May be None
                 use_wage_based_savings=inputs.get("use_wage_based_savings", False),
                 savings_rate=inputs.get("savings_rate"),
+                savings_rate_profile=inputs.get("savings_rate_profile"),
                 education_level=inputs.get("education_level"),
                 current_age=inputs["current_age"],
                 current_year=inputs.get("current_year"),
+                use_wage_based_spending=inputs.get("use_wage_based_spending", False),
+                replacement_ratio=inputs.get("replacement_ratio"),
+                pre_retire_spending_tracked=inputs.get("pre_retire_spending_tracked", False),
             )
 
             # Run simulation
@@ -414,32 +349,45 @@ def main():
         results.display_metrics(simulation_result, "Simulation Results")
         results.display_data_warning(simulation_result, total_years)
 
+        # Display validation messages
+        if simulation_result.pre_retire_avg_spending is not None and simulation_result.pre_retire_avg_spending > 0:
+            retirement_spending = inputs.get("annual_spend") or 0.0
+            if inputs.get("withdrawal_params"):
+                retirement_spending = inputs["withdrawal_params"].total_annual_expense or 0.0
+            if retirement_spending > 0:
+                ratio = retirement_spending / simulation_result.pre_retire_avg_spending
+                if 0.70 <= ratio <= 0.90:
+                    st.success(f"✓ Retirement spending is {ratio*100:.0f}% of pre-retirement average (typical range: 70-90%)")
+                elif 0.90 < ratio <= 1.00:
+                    st.warning(f"⚠ Retirement spending is {ratio*100:.0f}% of pre-retirement average (high - consider reducing)")
+                elif ratio > 1.00:
+                    excess_pct = (ratio - 1.0) * 100
+                    st.error(f"⚠ Retirement spending exceeds pre-retirement average by {excess_pct:.0f}% (unusual - may be unsustainable)")
+                else:
+                    st.info(
+                        f"ℹ Retirement spending is {ratio*100:.0f}% of pre-retirement average (low - may indicate conservative planning)"
+                    )
+
+        # Display early retirement metrics
+        if simulation_result.earliest_retirement_ages is not None and len(simulation_result.earliest_retirement_ages) > 0:
+            median_earliest = np.median(simulation_result.earliest_retirement_ages)
+            p10_earliest = np.percentile(simulation_result.earliest_retirement_ages, 10)
+            p90_earliest = np.percentile(simulation_result.earliest_retirement_ages, 90)
+            st.info(
+                f"📅 **Earliest Possible Retirement:** age {median_earliest:.0f} \n\n"
+                f"Based on 25x annual expenses rule (4% withdrawal rate)."
+            )
+
         # Create tabs for different visualizations
         tab1, tab2 = st.tabs(["Portfolio Performance", "Savings & Returns"])
 
         with tab1:
             # Plot interactive portfolio chart
             current_year = datetime.now().year
-            # Get annual spending using the same logic as the summary display
+            # Get annual spending (wage-based calculation already done in simulation service)
             annual_spend = inputs.get("annual_spend") or 0.0
             if inputs.get("withdrawal_params"):
                 annual_spend = inputs["withdrawal_params"].total_annual_expense or 0.0
-
-            # Handle wage-based spending if enabled
-            if inputs.get("use_wage_based_savings") and inputs.get("education_level"):
-                retire_age = inputs.get("retire_age", 65)
-                current_age_for_wage = inputs.get("current_age", 35)
-                current_year_for_wage = inputs.get("current_year") or current_year
-
-                # Get wage at retirement age
-                weekly_wage_at_retirement = data_service.get_wage_for_age(
-                    inputs["education_level"], current_age_for_wage, current_year_for_wage, retire_age
-                )
-                if weekly_wage_at_retirement:
-                    annual_wage_at_retirement = data_service.get_annual_wage(weekly_wage_at_retirement)
-                    # Use 80% replacement ratio (common retirement standard)
-                    replacement_ratio = 0.80
-                    annual_spend = annual_wage_at_retirement * replacement_ratio
 
             charts.plot_interactive_portfolio_chart(
                 simulation_result,
@@ -472,7 +420,7 @@ def main():
 
                     st.code(traceback.format_exc())
             else:
-                st.info("Enable wage-based savings and select an education level to see savings and returns breakdown.")
+                st.info('Enable "Detailed Plan" to see savings and returns breakdown.')
 
         # Plot interactive portfolio progress chart (replaces terminal wealth histogram)
         portfolio_weights_dict = None

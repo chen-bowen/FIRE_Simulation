@@ -195,7 +195,13 @@ class ChartComponent:
                 else:  # Spending
                     self._plot_spending_quantiles(result, "Spending Quantiles", current_age, current_year)
             else:  # Spending vs Returns
-                self._plot_spending_vs_returns(result, current_year, initial_balance)
+                # Get pre_retire_years from stored params if available
+                pre_retire_years = None
+                if "simulation_params" in st.session_state:
+                    stored_params = st.session_state.get("simulation_params")
+                    if stored_params:
+                        pre_retire_years = stored_params.pre_retire_years
+                self._plot_spending_vs_returns(result, current_year, initial_balance, pre_retire_years)
 
             # Add note about today's dollars (styled like examples)
             st.markdown(
@@ -591,12 +597,15 @@ class ChartComponent:
         result: SimulationResult,
         current_year: int = None,
         initial_balance: float = None,
+        pre_retire_years: int = None,
     ) -> None:
         """Plot spending vs returns bar chart.
 
         Args:
             result: Simulation result data
             current_year: Current year for calendar year x-axis labels
+            initial_balance: Initial portfolio balance (optional)
+            pre_retire_years: Number of pre-retirement years (optional)
         """
         from datetime import datetime
 
@@ -610,6 +619,19 @@ class ChartComponent:
         ppy = result.periods_per_year
         total_years = max(1, int(math.ceil(result.horizon_periods / ppy)))
 
+        # Determine pre-retirement years if not provided
+        if pre_retire_years is None:
+            # Estimate from spending_over_time - first non-zero spending indicates retirement start
+            pre_retire_years = 0
+            if len(result.spending_over_time) > 0:
+                for i, spending in enumerate(result.spending_over_time):
+                    if spending > 0:
+                        pre_retire_years = i // ppy
+                        break
+                else:
+                    # No spending found, assume all accumulation
+                    pre_retire_years = total_years
+
         # Aggregate periods into years
         years = []
         annual_spending = []
@@ -621,8 +643,19 @@ class ChartComponent:
             start_period = year_idx * ppy
             end_period = min((year_idx + 1) * ppy, result.horizon_periods)
 
-            # Sum spending for the year (spending_over_time is per-period)
-            year_spending = np.sum(result.spending_over_time[start_period:end_period])
+            # Determine spending for this year
+            # During accumulation: use pre-retirement spending (living expenses)
+            # During retirement: use portfolio withdrawals
+            if year_idx < pre_retire_years:
+                # Pre-retirement: use tracked pre-retirement spending if available
+                if result.pre_retire_spending_by_year is not None and year_idx < len(result.pre_retire_spending_by_year):
+                    year_spending = result.pre_retire_spending_by_year[year_idx]
+                else:
+                    # Fallback: no spending shown during accumulation (portfolio not being withdrawn from)
+                    year_spending = 0.0
+            else:
+                # Retirement: sum portfolio withdrawals for the year
+                year_spending = np.sum(result.spending_over_time[start_period:end_period])
 
             # Convert percentage returns into dollar growth on the median portfolio path
             year_return_dollars = 0.0
@@ -670,11 +703,16 @@ class ChartComponent:
         fig = go.Figure()
 
         # Add spending bars (negative, pink)
+        # Differentiate between pre-retirement spending (living expenses) and retirement spending (withdrawals)
+        spending_name = "Spending"
+        if result.pre_retire_spending_by_year is not None and pre_retire_years > 0:
+            spending_name = "Spending (Living Expenses + Withdrawals)"
+
         fig.add_trace(
             go.Bar(
                 x=years,
                 y=annual_spending,
-                name="Spending",
+                name=spending_name,
                 marker_color="#e74c3c",  # Pink/red for negative
                 hovertemplate="%{x}<br>Spending: $%{y:,.0f}<extra></extra>",
             )
@@ -752,31 +790,52 @@ class ChartComponent:
         # Each year corresponds to periods_per_year periods
         ppy = result.periods_per_year
 
-        # Create slider for year selection
+        # Create slider for age selection
         max_year = int(total_years)
         from datetime import datetime
 
-        year_label = "Select Simulation Year"
+        # Use age-based slider if current_age is available
         if current_age is not None:
+            min_age = current_age
+            max_age = current_age + max_year - 1
+            age_label = "Select Age"
+            if user_name:
+                age_label += f" - {user_name}"
+
+            # Use a stable key to maintain slider state across reruns
+            slider_key = "portfolio_age_slider"
+
+            selected_age = st.slider(
+                age_label,
+                min_value=min_age,
+                max_value=max_age,
+                value=st.session_state.get(slider_key, min_age),
+                step=1,
+                key=slider_key,
+            )
+
+            # Convert selected age back to year index (1-based)
+            selected_year = selected_age - current_age + 1
+        else:
+            # Fallback to year-based slider if age is not available
+            year_label = "Select Simulation Year"
+            from datetime import datetime
+
             current_year = datetime.now().year
             year_label += f" ({current_year})"
             if user_name:
                 year_label += f" - {user_name}"
-            age_label = f" (Age: {current_age})"
-        else:
-            age_label = ""
 
-        # Use a stable key to maintain slider state across reruns
-        slider_key = "portfolio_year_slider"
-
-        selected_year = st.slider(
-            year_label + age_label,
-            min_value=1,
-            max_value=max_year,
-            value=st.session_state.get(slider_key, 1),
-            step=1,
-            key=slider_key,
-        )
+            slider_key = "portfolio_year_slider"
+            selected_year = st.slider(
+                year_label,
+                min_value=1,
+                max_value=max_year,
+                value=st.session_state.get(slider_key, 1),
+                step=1,
+                key=slider_key,
+            )
+            selected_age = None
 
         # Calculate period index for selected year
         # Year 1 = periods 0 to ppy-1, Year 2 = periods ppy to 2*ppy-1, etc.
@@ -952,10 +1011,15 @@ class ChartComponent:
         if current_age is not None:
             current_year = datetime.now().year
             display_year = current_year + selected_year - 1
-            display_age = current_age + selected_year - 1
-            st.subheader(f"Allocation for Year {display_year} (Age {display_age})")
+            if selected_age is not None:
+                display_age = selected_age
+                st.subheader(f"Allocation for Age {display_age}")
+            else:
+                display_age = current_age + selected_year - 1
+                st.subheader(f"Allocation for Year {display_year} (Age {display_age})")
         else:
             st.subheader(f"Allocation for Year {selected_year}")
+            display_age = None
 
         # Create two columns: pie chart and info
         col1, col2 = st.columns([2, 1])
@@ -1001,8 +1065,13 @@ class ChartComponent:
             )
 
             # Add total value in center
+            center_text = (
+                f"<b>${portfolio_value:,.0f}</b><br>Total Value<br>(Age {display_age})"
+                if display_age
+                else f"<b>${portfolio_value:,.0f}</b><br>Total Value<br>(Year {selected_year})"
+            )
             fig.add_annotation(
-                text=f"<b>${portfolio_value:,.0f}</b><br>Total Value<br>(Year {selected_year})",
+                text=center_text,
                 x=0.5,
                 y=0.5,
                 font_size=16,

@@ -14,7 +14,7 @@ Key features:
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -43,6 +43,33 @@ class ExpenseCategory:
             raise ValueError(
                 f"ExpenseCategory '{self.name}' must have either current_amount or percentage"
             )
+
+
+@dataclass
+class SavingsRateProfile:
+    """Age-based savings rate profile for variable savings rates over time."""
+
+    age_ranges: List[Tuple[int, int]]  # (start_age, end_age) inclusive
+    rates: List[float]  # savings rate for each range (0.0-1.0)
+
+    def __post_init__(self):
+        """Validate that age ranges and rates match."""
+        if len(self.age_ranges) != len(self.rates):
+            raise ValueError("age_ranges and rates must have the same length")
+        if not all(0.0 <= rate <= 1.0 for rate in self.rates):
+            raise ValueError("All rates must be between 0.0 and 1.0")
+        # Validate age ranges don't overlap (simplified check)
+        sorted_ranges = sorted(self.age_ranges, key=lambda x: x[0])
+        for i in range(len(sorted_ranges) - 1):
+            if sorted_ranges[i][1] >= sorted_ranges[i + 1][0]:
+                raise ValueError("Age ranges must not overlap")
+
+    def get_rate_for_age(self, age: int) -> Optional[float]:
+        """Get savings rate for a specific age."""
+        for (start_age, end_age), rate in zip(self.age_ranges, self.rates):
+            if start_age <= age <= end_age:
+                return rate
+        return None
 
 
 @dataclass
@@ -90,10 +117,14 @@ class SimulationParams:
         WithdrawalParams
     ] = None  # New dynamic withdrawal params
     use_wage_based_savings: bool = False  # Use wage growth for contributions
-    savings_rate: Optional[float] = None  # Percentage of wage to save (0.0-1.0)
+    savings_rate: Optional[float] = None  # Percentage of wage to save (0.0-1.0) - used if savings_rate_profile is None
+    savings_rate_profile: Optional[SavingsRateProfile] = None  # Age-based savings rate profile
     education_level: Optional[str] = None  # Education level for wage growth
     current_age: Optional[int] = None  # Current age for wage projections
     current_year: Optional[int] = None  # Current year for wage projections
+    use_wage_based_spending: bool = False  # Calculate retirement spending from final wage
+    replacement_ratio: Optional[float] = None  # Percentage of final wage for retirement spending (default 0.80)
+    pre_retire_spending_tracked: bool = False  # Whether to track pre-retirement spending
 
 
 @dataclass
@@ -120,6 +151,13 @@ class SimulationResult:
         np.ndarray
     ] = None  # Median returns per period (for visualization)
     rebalancing_events: Optional[List[str]] = None  # List of rebalancing event messages
+    pre_retire_avg_spending: Optional[float] = None  # Average annual spending during accumulation
+    pre_retire_spending_by_year: Optional[
+        np.ndarray
+    ] = None  # Median spending by accumulation year
+    earliest_retirement_ages: Optional[
+        np.ndarray
+    ] = None  # Earliest retirement age for each path (based on 25x expenses rule)
 
 
 @dataclass
