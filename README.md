@@ -1,6 +1,6 @@
-# Retirement Planner (Streamlit)
+# Financial Independence, Retire Early (FIRE)
 
-A comprehensive retirement planning application that combines historical market data with Monte Carlo projections to simulate retirement scenarios. Features category-specific CPI-adjusted spending, wage-based savings, and detailed financial planning tools.
+A comprehensive Financial Independence, Retire Early (FIRE) planning application that combines historical market data with Monte Carlo projections to simulate early retirement scenarios. Features category-specific CPI-adjusted spending, wage-based savings, and detailed financial planning tools to help you achieve financial independence.
 
 ## Features
 

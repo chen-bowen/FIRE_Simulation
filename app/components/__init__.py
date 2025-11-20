@@ -1,4 +1,4 @@
-"""UI components for the retirement planner."""
+"""UI components for Financial Independence, Retire Early (FIRE)."""
 
 from .charts import ChartComponent
 from .results import ResultsComponent

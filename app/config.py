@@ -1,4 +1,4 @@
-"""Configuration management for the retirement planner app."""
+"""Configuration management for Financial Independence, Retire Early (FIRE) app."""
 
 from dataclasses import dataclass
 from typing import Dict, List

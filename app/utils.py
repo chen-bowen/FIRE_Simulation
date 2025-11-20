@@ -1,4 +1,4 @@
-"""Utility functions and constants for the retirement planner.
+"""Utility functions and constants for Financial Independence, Retire Early (FIRE).
 
 This module provides helper functions used throughout the application:
 - Input validation and data alignment

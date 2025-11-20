@@ -1,4 +1,4 @@
-"""Data models and type definitions for the retirement planner.
+"""Data models and type definitions for Financial Independence, Retire Early (FIRE).
 
 This module defines all data structures used throughout the application:
 - Simulation parameters and results

@@ -1,8 +1,8 @@
-# Methodology Report: Retirement Planning Application
+# Methodology Report: Financial Independence, Retire Early (FIRE) Application
 
 ## Executive Summary
 
-This report documents the methodologies employed in the Retirement Planning Application, which combines historical market data with Monte Carlo projections to model retirement scenarios. The application uses a hybrid simulation approach: historical data for the accumulation phase and Monte Carlo for the retirement phase.
+This report documents the methodologies employed in the Financial Independence, Retire Early (FIRE) Application, which combines historical market data with Monte Carlo projections to model early retirement scenarios. The application uses a hybrid simulation approach: historical data for the accumulation phase and Monte Carlo for the retirement phase.
 
 ---
 

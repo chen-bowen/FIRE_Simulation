@@ -1,6 +1,6 @@
 """Chart components for visualization.
 
-This module handles all charting and visualization for the retirement planner:
+This module handles all charting and visualization for Financial Independence, Retire Early (FIRE):
 - Portfolio path charts with percentile bands
 - Interactive portfolio progress charts showing accumulation and retirement phases
 - Comparison charts between different simulation methods
@@ -25,7 +25,7 @@ from app.services.data_service import DataService
 
 
 class ChartComponent:
-    """Charts for the retirement planner.
+    """Charts for Financial Independence, Retire Early (FIRE).
 
     This class provides all visualization functionality:
     - Portfolio path charts with percentile bands and sample paths

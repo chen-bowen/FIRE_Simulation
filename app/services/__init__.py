@@ -1,4 +1,4 @@
-"""Services package for the retirement planner."""
+"""Services package for Financial Independence, Retire Early (FIRE)."""
 
 from .data_service import DataService
 from .portfolio_service import PortfolioService

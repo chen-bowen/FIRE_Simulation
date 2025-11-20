@@ -1,6 +1,6 @@
-"""Main application for the retirement planner.
+"""Main application for Financial Independence, Retire Early (FIRE).
 
-This module orchestrates the entire retirement planning application, including:
+This module orchestrates the entire FIRE planning application, including:
 - UI components (sidebar, charts, results, summary)
 - Data services (market data fetching)
 - Simulation services (hybrid: historical accumulation + Monte Carlo retirement)
@@ -44,8 +44,8 @@ def main():
     6. Display results across multiple tabs
     """
     # Configure Streamlit page layout
-    st.set_page_config(page_title="Retirement Planner", layout="wide", initial_sidebar_state="expanded")
-    st.title("Retirement Planner")
+    st.set_page_config(page_title="Financial Independence, Retire Early", layout="wide", initial_sidebar_state="expanded")
+    st.title("Financial Independence, Retire Early")
 
     # Initialize UI components
     sidebar = SidebarComponent()  # Handles user input form

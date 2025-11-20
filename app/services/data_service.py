@@ -1,6 +1,6 @@
 """Data service for fetching and processing market data.
 
-This module handles all data operations for the retirement planner:
+This module handles all data operations for Financial Independence, Retire Early (FIRE):
 - Yahoo Finance data fetching with caching
 - Historical data backfilling for ETFs with limited history
 - Market data calibration (means, covariances, correlations)
