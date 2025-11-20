@@ -51,6 +51,7 @@ This report documents the methodologies employed in the Retirement Planning Appl
 **Key Decision**: Education-based wage projections enable realistic contribution modeling. Instead of assuming fixed contributions, the system projects wage growth based on education level and age. This allows users to model savings rates (e.g., "save 15% of income") rather than fixed dollar amounts, reflecting how people actually save. Wages are pre-calculated for all accumulation years and cached to avoid repeated calculations during simulation.
 
 **Savings Rate Profiles**: Users can specify either:
+
 - Constant savings rate: Fixed percentage of income throughout accumulation
 - Age-based savings rate profile: Different savings rates for different age ranges (e.g., 10% at age 25-30, 20% at age 31-40, 25% at age 41-50)
 
@@ -138,6 +139,7 @@ Tracks three components via PortfolioState dataclass:
 **Methodology**: Inflation adjustments apply only during the retirement phase (no spending occurs during accumulation). Uses historical average category-specific CPI rates when available for dynamic withdrawals, otherwise falls back to overall historical average inflation rate. The same average rate is applied consistently across all retirement periods.
 
 **Category-Specific Calculation**: For dynamic withdrawal mode, each expense category's spending is adjusted independently:
+
 - Each category uses its own historical average CPI inflation rate if available
 - Category spending is calculated as: `category_spending_t = initial_category_spending × (1 + category_rate)^years_into_retirement`
 - Total withdrawal equals sum of all adjusted category spending amounts
@@ -338,18 +340,21 @@ Terminal balances analyzed with mean, median, percentiles, and histogram visuali
 **Modular Design**: Separation of concerns across services and components:
 
 **Services** (Business Logic):
+
 - **DataService**: Data acquisition and processing (market, CPI, wage data)
 - **PortfolioService**: Portfolio mathematics and state management (rebalancing, withdrawals, dynamic withdrawal calculations)
 - **SimulationService**: Hybrid simulation engine (historical accumulation, Monte Carlo retirement)
 - **SimulationController**: Orchestrates simulation execution, input caching, and result management
 
 **Components** (UI Layer):
+
 - **SidebarComponent**: User input forms with expense categories, portfolio allocation, and wage-based savings configuration
 - **ChartComponent**: Visualization components for portfolio performance, savings breakdown, and terminal wealth
 - **ResultsComponent**: Results display, validation messages, and metrics presentation
 - **SummaryComponent**: Pre-simulation summary cards and input summary display
 
 **Main Application**:
+
 - **main.py**: Lightweight orchestrator (~130 lines) that coordinates components and services, handles validation, and manages the application flow
 
 **Type Safety**: Dataclasses for all data structures (SimulationParams, SimulationResult, PortfolioState, WithdrawalParams, ExpenseCategory, SavingsRateProfile). Type hints throughout enable IDE support and catch errors early.
