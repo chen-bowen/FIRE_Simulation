@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 from typing import Optional, Tuple
 
 import pandas as pd
@@ -73,6 +74,7 @@ class SimulationController:
                     "simulation_current_age",
                     "simulation_returns_df",
                     "simulation_initial_balance",
+                    "simulation_runtime",
                     "portfolio_year_slider",
                 ]
                 for key in simulation_keys:
@@ -173,6 +175,8 @@ class SimulationController:
                 "**Hybrid approach: historical data for accumulation phase, Monte Carlo projections for retirement phase**"
             )
 
+            # Track simulation runtime
+            start_time = time.time()
             with st.spinner("Running simulation..."):
                 simulation_result = simulation_service.run_simulation(
                     returns_df,
@@ -181,6 +185,8 @@ class SimulationController:
                     inputs["n_paths"],
                     inputs["seed"],
                 )
+            end_time = time.time()
+            simulation_runtime = end_time - start_time
 
             # Store simulation result and related data in session state
             # Clear any old simulation data first to ensure clean state
@@ -203,6 +209,7 @@ class SimulationController:
             st.session_state["simulation_current_age"] = inputs["current_age"]
             st.session_state["simulation_returns_df"] = returns_df
             st.session_state["simulation_initial_balance"] = inputs["initial_balance"]
+            st.session_state["simulation_runtime"] = simulation_runtime
 
             return simulation_result, returns_df
 

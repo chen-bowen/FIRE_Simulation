@@ -62,19 +62,13 @@ class ResultsComponent:
             )
 
         with col4:
-            if (
-                result.pre_retire_avg_spending is not None
-                and result.pre_retire_avg_spending > 0
-            ):
+            if result.pre_retire_avg_spending is not None and result.pre_retire_avg_spending > 0:
                 st.metric(
                     "Avg Pre-Retirement Spending",
                     format_currency(result.pre_retire_avg_spending),
                     help="Average annual spending during accumulation phase",
                 )
-            elif (
-                result.earliest_retirement_ages is not None
-                and len(result.earliest_retirement_ages) > 0
-            ):
+            elif result.earliest_retirement_ages is not None and len(result.earliest_retirement_ages) > 0:
                 median_earliest = np.median(result.earliest_retirement_ages)
                 st.metric(
                     "Earliest Retirement",
@@ -83,11 +77,6 @@ class ResultsComponent:
                 )
             else:
                 st.metric("", "")  # Empty column for alignment
-
-    def display_data_warning(self, result: SimulationResult, total_years: int) -> None:
-        """Display warning about data limitations."""
-        # Removed - not needed since we simulate forward anyway using Monte Carlo
-        pass
 
     def display_rebalancing_events(self, result: SimulationResult) -> None:
         """Display rebalancing events if any occurred."""
@@ -207,9 +196,27 @@ class ResultsComponent:
             df = pd.DataFrame(stats_data)
             st.dataframe(df, use_container_width=True)
 
-    def display_validation_messages(
-        self, simulation_result: SimulationResult, inputs: dict
-    ) -> None:
+    def display_runtime(self) -> None:
+        """Display simulation runtime if available.
+
+        Shows runtime in seconds (if < 60s), minutes:seconds (if < 60m), or hours:minutes:seconds format.
+        """
+        if "simulation_runtime" in st.session_state:
+            runtime = st.session_state["simulation_runtime"]
+            if runtime < 60:
+                runtime_text = f"⏱️ Simulation completed in {runtime:.2f} seconds"
+            elif runtime < 3600:
+                minutes = int(runtime // 60)
+                seconds = runtime % 60
+                runtime_text = f"⏱️ Simulation completed in {minutes}m {seconds:.1f}s"
+            else:
+                hours = int(runtime // 3600)
+                minutes = int((runtime % 3600) // 60)
+                seconds = runtime % 60
+                runtime_text = f"⏱️ Simulation completed in {hours}h {minutes}m {seconds:.1f}s"
+            st.caption(runtime_text)
+
+    def display_validation_messages(self, simulation_result: SimulationResult, inputs: dict) -> None:
         """Display validation messages for retirement spending and early retirement metrics.
 
         Args:
@@ -217,40 +224,26 @@ class ResultsComponent:
             inputs: Dictionary of user inputs
         """
         # Display validation messages
-        if (
-            simulation_result.pre_retire_avg_spending is not None
-            and simulation_result.pre_retire_avg_spending > 0
-        ):
+        if simulation_result.pre_retire_avg_spending is not None and simulation_result.pre_retire_avg_spending > 0:
             retirement_spending = inputs.get("annual_spend") or 0.0
             if inputs.get("withdrawal_params"):
-                retirement_spending = (
-                    inputs["withdrawal_params"].total_annual_expense or 0.0
-                )
+                retirement_spending = inputs["withdrawal_params"].total_annual_expense or 0.0
             if retirement_spending > 0:
                 ratio = retirement_spending / simulation_result.pre_retire_avg_spending
                 if 0.70 <= ratio <= 0.90:
-                    st.success(
-                        f"✓ Retirement spending is {ratio*100:.0f}% of pre-retirement average (typical range: 70-90%)"
-                    )
+                    st.success(f"✓ Retirement spending is {ratio*100:.0f}% of pre-retirement average (typical range: 70-90%)")
                 elif 0.90 < ratio <= 1.00:
-                    st.warning(
-                        f"⚠ Retirement spending is {ratio*100:.0f}% of pre-retirement average (high - consider reducing)"
-                    )
+                    st.warning(f"⚠ Retirement spending is {ratio*100:.0f}% of pre-retirement average (high - consider reducing)")
                 elif ratio > 1.00:
                     excess_pct = (ratio - 1.0) * 100
-                    st.error(
-                        f"⚠ Retirement spending exceeds pre-retirement average by {excess_pct:.0f}% (unusual - may be unsustainable)"
-                    )
+                    st.error(f"⚠ Retirement spending exceeds pre-retirement average by {excess_pct:.0f}% (unusual - may be unsustainable)")
                 else:
                     st.info(
                         f"ℹ Retirement spending is {ratio*100:.0f}% of pre-retirement average (low - may indicate conservative planning)"
                     )
 
         # Display early retirement metrics
-        if (
-            simulation_result.earliest_retirement_ages is not None
-            and len(simulation_result.earliest_retirement_ages) > 0
-        ):
+        if simulation_result.earliest_retirement_ages is not None and len(simulation_result.earliest_retirement_ages) > 0:
             median_earliest = np.median(simulation_result.earliest_retirement_ages)
             st.info(
                 f"📅 **Earliest Possible Retirement:** age {median_earliest:.0f} \n\n"
@@ -284,7 +277,9 @@ class ResultsComponent:
         """
         # Display metrics
         self.display_metrics(simulation_result, "Simulation Results")
-        self.display_data_warning(simulation_result, total_years)
+
+        # Display runtime if available
+        self.display_runtime()
 
         # Display validation messages
         self.display_validation_messages(simulation_result, inputs)
@@ -316,11 +311,7 @@ class ResultsComponent:
             stored_params = None
             if simulation_result is not None and not inputs_changed:
                 stored_params = st.session_state.get("simulation_params")
-            if (
-                stored_params
-                and stored_params.use_wage_based_savings
-                and stored_params.education_level
-            ):
+            if stored_params and stored_params.use_wage_based_savings and stored_params.education_level:
                 current_year = stored_params.current_year or datetime.now().year
                 try:
                     charts.plot_savings_and_returns_breakdown(
@@ -338,18 +329,12 @@ class ResultsComponent:
         # Plot interactive portfolio progress chart (replaces terminal wealth histogram)
         portfolio_weights_dict = None
         if "portfolio_weights" in st.session_state:
-            portfolio_weights_dict = {
-                k: v for k, v in st.session_state["portfolio_weights"].items() if v > 0
-            }
+            portfolio_weights_dict = {k: v for k, v in st.session_state["portfolio_weights"].items() if v > 0}
 
         # Use stored values from current simulation result (only if result exists and matches)
         if simulation_result is not None and not inputs_changed:
-            stored_pre_retire_years = st.session_state.get(
-                "simulation_pre_retire_years", pre_retire_years
-            )
-            stored_current_age = st.session_state.get(
-                "simulation_current_age", inputs["current_age"]
-            )
+            stored_pre_retire_years = st.session_state.get("simulation_pre_retire_years", pre_retire_years)
+            stored_current_age = st.session_state.get("simulation_current_age", inputs["current_age"])
         else:
             # Use current inputs if no valid cached simulation
             stored_pre_retire_years = pre_retire_years
