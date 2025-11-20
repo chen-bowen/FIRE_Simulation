@@ -277,6 +277,7 @@ class ResultsComponent:
         """
         # Display metrics
         self.display_metrics(simulation_result, "Simulation Results")
+        st.markdown("**Hybrid approach: historical data for accumulation phase, Monte Carlo projections for retirement phase**")
 
         # Display runtime if available
         self.display_runtime()

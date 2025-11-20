@@ -170,11 +170,7 @@ class SimulationController:
             )
 
             # Run simulation
-            st.subheader("Simulation Results")
-            st.markdown(
-                "**Hybrid approach: historical data for accumulation phase, Monte Carlo projections for retirement phase**"
-            )
-
+            # Note: Title and methodology will be displayed by ResultsComponent
             # Track simulation runtime
             start_time = time.time()
             with st.spinner("Running simulation..."):
