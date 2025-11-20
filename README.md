@@ -1,19 +1,23 @@
 # Retirement Planner (Streamlit)
 
-A comprehensive retirement planning application that combines historical market data with Monte Carlo projections to simulate retirement scenarios.
+A comprehensive retirement planning application that combines historical market data with Monte Carlo projections to simulate retirement scenarios. Features category-specific CPI-adjusted spending, wage-based savings, and detailed financial planning tools.
 
 ## Features
 
 ### Simulation Approach
 
-- **Unified Simulation**: Uses historical market data for the accumulation phase (pre-retirement) and Monte Carlo projections for the retirement phase
+- **Hybrid Simulation**: Uses historical market data for the accumulation phase (pre-retirement) and Monte Carlo projections for the retirement phase
 - **Historical Data**: Real market returns from Yahoo Finance for pre-retirement years
 - **Monte Carlo**: Statistical projections calibrated to historical returns for retirement years
+- **Multiple Asset Classes**: Support for stocks, bonds, international stocks, real estate, commodities, crypto, and cash
 
-### Dynamic Withdrawal System
+### Dynamic Withdrawal System (Detailed Plan Mode)
 
-- **CPI-Adjusted Spending**: Adjusts retirement spending based on historical Consumer Price Index (CPI) data
-- **Expense Categories**: Break down spending into 8 categories:
+- **Category-Specific CPI Adjustment**: Each expense category uses its own historical inflation rate from BLS CPI data
+  - Medical care typically inflates faster (~4-5% annually)
+  - Technology/communication may inflate slower
+  - Housing, food, transportation have their own rates
+- **8 Expense Categories**:
   - Food and beverages
   - Housing
   - Apparel
@@ -22,49 +26,94 @@ A comprehensive retirement planning application that combines historical market 
   - Recreation
   - Education and communication
   - Other goods and services
-- **Interactive Pie Chart**: Visualize and adjust expense category percentages with drag-and-drop interface
-- **Two Input Modes**:
-  - Total annual expense + category percentages
-  - Dollar amounts per category
+- **Interactive Category Management**:
+  - Visualize and adjust expense category percentages with interactive pie chart
+  - Preset templates based on typical US household spending
+  - Education-level based presets for more accurate spending patterns
+  - Fine-tune individual category percentages with sliders
+- **Wage-Based Retirement Spending**: Calculate retirement spending as a percentage of pre-retirement spending (replacement ratio)
+
+### Wage-Based Savings & Spending
+
+- **Wage Growth Projections**: Uses historical wage data by education level to project future income
+- **Savings Rate Options**:
+  - Constant savings rate (% of income)
+  - Age-based savings rate profiles (e.g., increase savings as you age)
+- **Education Levels Supported**:
+  - Less than high school
+  - High school
+  - Some college
+  - Bachelor's degree
+  - Master's degree
+  - Professional degree
+  - Doctorate
+- **Pre-Retirement Spending Tracking**: Automatically tracks spending during accumulation phase for replacement ratio calculations
 
 ### Visualization Features
 
-- **Portfolio Quantiles Chart**: Interactive chart showing portfolio value projections over time
+- **Portfolio Performance Tab**:
+  - Interactive portfolio quantiles chart showing value projections over time
   - Displays percentile bands (P10, P25, Median, P75, P90) with shaded confidence intervals
-  - Quantile lines are visible on the chart but hidden from the legend for a cleaner interface
-  - Retirement threshold line with label positioned in the top-left corner
-  - "Can Retire" marker shows when the median portfolio value first reaches the retirement threshold
+  - Retirement threshold line and "Can Retire" markers
   - Age and planned retirement markers for easy reference
-- **Interactive charts** for portfolio paths, spending analysis, and terminal wealth distribution
-- **Multiple chart views**: Toggle between portfolio quantiles, spending quantiles, and spending vs returns breakdown
+- **Savings & Returns Tab**:
+  - Detailed breakdown of savings contributions vs. investment returns over time
+  - Shows how wage growth affects contributions
+  - Available when using "Detailed Plan" mode with wage-based savings
+- **Terminal Wealth Histogram**: Distribution of final portfolio values across all simulation paths
+- **Pre-Simulation Summary**: Quick overview of timeline, financial inputs, and portfolio allocation
 
 ### Additional Features
 
 - **Daily/Monthly** return frequency toggle
-- **Smart data fetching** with historical backfill (SPY→^GSPC, VTI→VTSMX, etc.)
-- **Education & Wage Tracking**: Input education level and current wage for future wage growth calculations
-- **Modular architecture** with proper separation of concerns
-- **Type safety** and comprehensive error handling
+- **Smart data fetching** with historical backfill (SPY→^GSPC, VTI→VTSMX, BND→VBMFX, etc.)
+- **Portfolio Presets**: Quick selection of Conservative (30/70), Moderate (60/40), or Aggressive (90/10) allocations
+- **Custom Portfolio Allocation**: Fine-tune asset class weights with proportional sliders
+- **Input Validation**: Comprehensive validation with helpful error messages
+- **Results Caching**: Simulation results are cached and automatically invalidated when inputs change
+- **Modular Architecture**: Clean separation of concerns for maintainability
 
 ## Architecture
 
+The application follows a modular architecture with clear separation between UI components, business logic, and data services:
+
 ```
 app/
-├── config.py              # Configuration management
-├── schemas.py             # Data models and type definitions
-├── utils.py               # Utility functions
-├── main.py                # Main application entry point
-├── services/              # Business logic services
-│   ├── data_service.py    # Market data fetching & CPI data loading
-│   ├── portfolio_service.py # Portfolio management & category spending
-│   └── simulation_service.py # Unified simulation engine
-└── components/            # UI components
-    ├── sidebar.py         # Input forms (with expense categories & pie chart)
-    ├── charts.py          # Visualization
-    └── results.py          # Results display
+├── config.py                    # Configuration management
+├── schemas.py                   # Data models and type definitions
+├── utils.py                     # Utility functions (validation, formatting)
+├── main.py                      # Lightweight orchestrator (~130 lines)
+├── services/                    # Business logic services
+│   ├── data_service.py         # Market data fetching & CPI/wage data loading
+│   ├── portfolio_service.py    # Portfolio management & category spending calculations
+│   ├── simulation_service.py   # Core simulation engine
+│   └── simulation_controller.py # Simulation orchestration & caching
+└── components/                  # UI components
+    ├── sidebar.py              # Input forms (with expense categories & pie charts)
+    ├── charts.py               # Visualization components
+    ├── results.py              # Results display & validation messages
+    └── summary.py             # Pre-simulation summary cards & input summary
 data/
-└── CPI.csv                # Historical CPI index data
+├── CPI/                        # Category-specific CPI data
+│   ├── All_CPI.csv
+│   ├── Food_CPI.csv
+│   ├── Housing CPI.csv
+│   ├── Medical_CPI.csv
+│   └── ... (8 categories)
+└── Income/                     # Wage data by education level
+    ├── All_educational_levels_income.csv
+    ├── Bachelors_Income.csv
+    ├── Master's_Income.csv
+    └── ... (7 education levels)
 ```
+
+### Key Design Principles
+
+- **Separation of Concerns**: UI components, business logic, and data access are cleanly separated
+- **Single Responsibility**: Each component/service has a focused purpose
+- **Type Safety**: Comprehensive type hints and data validation
+- **Error Handling**: Graceful handling of edge cases and data limitations
+- **Maintainability**: Refactored codebase with `main.py` reduced from 541 to 131 lines
 
 ## Setup
 
@@ -211,62 +260,139 @@ Edit `app/config.py` to customize:
 
 - Default tickers and weights
 - Historical ticker mappings
-- UI defaults
-- Simulation parameters
+- UI defaults (ages, balances, spending)
+- Simulation parameters (Monte Carlo paths, random seed)
+- Crypto simulation parameters (volatility, extreme events)
 
 ## Data Sources
 
 ### Market Data
 
-The app automatically maps modern ETFs to historical equivalents:
+The app automatically maps modern ETFs to historical equivalents for longer data history:
 
 - **SPY** → **^GSPC** (S&P 500 index, 1950s+)
 - **VTI** → **VTSMX** (Vanguard Total Stock Market, 1992+)
 - **BND** → **VBMFX** (Vanguard Total Bond Market, 1986+)
+- **QQQ** → **^IXIC** (NASDAQ Composite)
+- **EFA** → **^EFA** (International stocks)
 
-### Inflation Data
+### Inflation Data (CPI)
 
-- **CPI Data**: Historical US Consumer Price Index data from BLS (Bureau of Labor Statistics)
-- **Location**: `data/CPI.csv`
-- **Usage**: Calculates historical annual inflation rates for dynamic withdrawal adjustments
-- **Source**: https://www.bls.gov/cpi/
+- **Source**: Bureau of Labor Statistics (BLS)
+- **Location**: `data/CPI/` directory with category-specific CSV files
+- **Categories**: 8 expense categories with historical CPI data
+- **Usage**:
+  - Calculates category-specific inflation rates for dynamic withdrawal adjustments
+  - Provides more realistic spending projections than a single inflation rate
+- **Update Frequency**: Data files can be updated from BLS website
 
-### Wage Data (Future)
+### Wage Data
 
-- **Median Usual Weekly Earnings**: Historical wage data by education level
-- **Source**: https://www.bls.gov/cps/earnings.htm
-- **Status**: Structure in place, data loading to be implemented
+- **Source**: Bureau of Labor Statistics (BLS) - Median Usual Weekly Earnings
+- **Location**: `data/Income/` directory with education-level specific CSV files
+- **Education Levels**: 7 levels from "Less than high school" to "Doctorate"
+- **Usage**:
+  - Projects future wage growth based on education level and age
+  - Calculates wage-based savings contributions
+  - Estimates retirement spending using replacement ratio
+- **Update Frequency**: Data files can be updated from BLS website
 
 ## Usage
 
-### Basic Simulation
+### Basic Simulation (Simple Amount Mode)
 
 1. Enter your current age, retirement age, and planning horizon
-2. Set your portfolio allocation (tickers and weights)
-3. Enter savings and spending amounts
-4. Click "Run Simulation" to see results
+2. Set your portfolio allocation (use presets or customize)
+3. Enter current savings and annual contribution amount
+4. Enter annual retirement spending
+5. Click "Run Simulation" to see results
+
+### Detailed Plan Mode (Dynamic Withdrawal)
+
+1. Select "Detailed plan" in the Retirement Spending section
+2. **Pre-retirement Savings**:
+   - Choose savings rate style (constant or age-based profile)
+   - Enter current annual wage (or let it estimate from education level)
+   - Select your education level
+   - Adjust savings rate(s)
+3. **Retirement Spending Adjustment**:
+   - Set replacement ratio (% of pre-retirement spending)
+   - View estimated retirement spending
+4. **Spending Categories**:
+   - Choose a category template (Typical US Household, Conservative, or education-based)
+   - Fine-tune category percentages if needed
+   - View interactive pie chart
+5. Click "Run Simulation" to see results with category-specific inflation adjustments
 
 ### Retirement Phase Only (Already Retired)
 
 The app supports users who are already retired:
+
 - Set **Retirement age** to be less than or equal to **Current age**
 - The simulation will skip the accumulation phase and start directly with retirement withdrawals
-- Annual savings contributions are automatically disabled (not applicable for already-retired users)
+- Annual savings contributions are automatically disabled
 - All simulation periods will be treated as retirement phase with withdrawals
+- Dynamic withdrawal with CPI adjustments is still available
 
-### Dynamic Withdrawal Mode
+### Portfolio Allocation
 
-1. Enable "Use dynamic withdrawal (CPI-adjusted)" checkbox
-2. Choose input mode:
-   - **Total + Percentages**: Enter total annual spending and adjust category percentages using the interactive pie chart or sliders
-   - **Dollar amounts per category**: Enter specific dollar amounts for each expense category
-3. Optionally enter current wage and education level for future wage growth calculations
-4. Enable/disable CPI-based inflation adjustment
+- **Preset Mode**: Quick selection of Conservative (30/70), Moderate (60/40), or Aggressive (90/10)
+- **Custom Mode**:
+  - Select asset classes to include
+  - Adjust weights with proportional sliders (others adjust automatically to maintain 100%)
+  - Supports multiple asset classes: US Stocks, International Stocks, Bonds, Cash, Crypto, Real Estate, Commodities
+
+### Advanced Settings
+
+Expand the "Advanced Settings" section to:
+
+- Change frequency (daily/monthly)
+- Adjust date range for historical data
+- Override tickers/weights manually
+- Configure Monte Carlo paths and random seed
+- Adjust inflation rate (for Simple Amount mode)
+
+## Technical Details
+
+### Simulation Methodology
+
+- **Accumulation Phase**: Uses actual historical returns year-by-year from the start date
+- **Retirement Phase**: Uses Monte Carlo simulation with returns calibrated to historical statistics
+- **Rebalancing**: Annual rebalancing to maintain target portfolio weights
+- **Frequency**: Supports both daily and monthly simulation frequencies
+
+### Dynamic Withdrawal Calculation
+
+For each period in retirement:
+
+1. Calculate years into retirement: `years_into_retirement = periods_into_retirement / periods_per_year`
+2. For each expense category:
+   - Get category-specific inflation rate (from CPI data) or use general rate
+   - Apply cumulative inflation: `category_amount × (1 + category_rate)^years_into_retirement`
+3. Sum all categories to get total annual withdrawal
+4. Convert to per-period withdrawal based on frequency
+
+### Data Limitations & Handling
+
+- **Historical Data Availability**: Some assets (e.g., crypto) have limited history
+- **Monte Carlo Extension**: When historical data runs out, the simulation extends using Monte Carlo projections
+- **Crypto Assets**: Special handling with volatility dampening and extreme event modeling
+- **Data Validation**: Automatic alignment of portfolio weights with available data
 
 ## Notes
 
 - Uses Adjusted Close for all market data sources
-- Annual rebalancing with configurable daily pacing
+- Annual rebalancing with configurable daily pacing (pro-rata or monthly-boundary)
 - Handles data limitations gracefully with proportional scaling
 - CPI inflation rates are calculated as year-over-year changes: `(CPI_t / CPI_t-1) - 1`
-- Hybrid simulation: Uses actual year-by-year CPI rates for accumulation phase (when available), historical averages for retirement phase projections
+- Category-specific inflation rates use historical averages from BLS data
+- Wage growth projections use historical trends by education level and age
+- Results are cached and automatically invalidated when inputs change (detected via input hash)
+
+## License
+
+[Add your license information here]
+
+## Contributing
+
+[Add contribution guidelines here]
