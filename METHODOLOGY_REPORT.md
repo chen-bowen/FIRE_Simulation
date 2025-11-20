@@ -42,12 +42,17 @@ This report documents the methodologies employed in the Retirement Planning Appl
 
 **Methodology**:
 
-- Six education levels from "Less than high school" to "Doctorate"
+- Seven education levels: "Less than high school", "High school", "Some college", "Bachelor's degree", "Master's degree", "Professional degree", "Doctorate"
 - Wage growth: Year-over-year percentage change calculated from historical data
 - Projection: Compound growth based on historical growth rates: `wage_t = wage_0 * (1 + growth_rate)^t`
 - Conversion: Weekly to annual using 52-week multiplier
+- Age-based projections: Wage growth varies by age, with faster growth in early career and slower growth approaching retirement
 
 **Key Decision**: Education-based wage projections enable realistic contribution modeling. Instead of assuming fixed contributions, the system projects wage growth based on education level and age. This allows users to model savings rates (e.g., "save 15% of income") rather than fixed dollar amounts, reflecting how people actually save. Wages are pre-calculated for all accumulation years and cached to avoid repeated calculations during simulation.
+
+**Savings Rate Profiles**: Users can specify either:
+- Constant savings rate: Fixed percentage of income throughout accumulation
+- Age-based savings rate profile: Different savings rates for different age ranges (e.g., 10% at age 25-30, 20% at age 31-40, 25% at age 41-50)
 
 ---
 
@@ -132,15 +137,22 @@ Tracks three components via PortfolioState dataclass:
 
 **Methodology**: Inflation adjustments apply only during the retirement phase (no spending occurs during accumulation). Uses historical average category-specific CPI rates when available for dynamic withdrawals, otherwise falls back to overall historical average inflation rate. The same average rate is applied consistently across all retirement periods.
 
+**Category-Specific Calculation**: For dynamic withdrawal mode, each expense category's spending is adjusted independently:
+- Each category uses its own historical average CPI inflation rate if available
+- Category spending is calculated as: `category_spending_t = initial_category_spending × (1 + category_rate)^years_into_retirement`
+- Total withdrawal equals sum of all adjusted category spending amounts
+
 **Key Decisions**:
 
 1. **Retirement-only inflation**: Inflation applies only during retirement, not accumulation. During accumulation, contributions are modeled with wage growth but spending is zero, so inflation is irrelevant.
 
 2. **Average rates for projections**: When projecting future retirement years, the system uses historical average inflation rates (calculated once) rather than attempting to project year-by-year inflation. This simplification is necessary since future inflation is unknown, and using historical averages provides reasonable projections.
 
-3. **Category-specific application**: Each expense category uses its own historical average inflation rate if available. This captures real-world dynamics where medical inflation (typically 4-5% historically) exceeds overall inflation (typically 2-3%), providing more accurate projections.
+3. **Category-specific application**: Each expense category uses its own historical average inflation rate if available. This captures real-world dynamics where medical inflation (typically 4-5% historically) exceeds overall inflation (typically 2-3%), providing more accurate projections. Medical care spending grows faster than overall spending, while some categories (like apparel) may grow slower.
 
 4. **Cumulative compounding**: Inflation compounds over time using `(1 + r)^t` rather than linear adjustment. This accurately models how spending increases year-over-year with inflation.
+
+5. **Wage-based spending calculation**: In "Detailed Plan" mode, retirement spending can be calculated as a replacement ratio (e.g., 80%) of pre-retirement spending. Pre-retirement spending is calculated as: `pre_retire_spending = final_wage × (1 - savings_rate)`. This provides a more realistic approach than arbitrary spending amounts.
 
 ---
 
@@ -302,12 +314,14 @@ Terminal balances analyzed with mean, median, percentiles, and histogram visuali
 - LRU cache (maxsize=64) for market data downloads to avoid redundant API calls
 - In-memory caching for CPI/wage data after first load
 - Session state caching for simulation results to avoid re-computation on UI interactions
+- Input hash-based cache invalidation: Simulation results are cached until inputs change (detected via MD5 hash of input parameters)
 
 **Efficiency**:
 
 - Vectorized NumPy operations for portfolio calculations
 - Pre-calculated annual wages for all accumulation years (cached before simulation loop)
 - Limited sample paths (100 max) for visualization to reduce memory usage
+- SimulationController manages result caching and automatic invalidation, preventing redundant simulations
 
 **Key Decisions**:
 
@@ -321,14 +335,24 @@ Terminal balances analyzed with mean, median, percentiles, and histogram visuali
 
 ## 9. Technical Architecture
 
-**Modular Design**: Separation of concerns across services:
+**Modular Design**: Separation of concerns across services and components:
 
+**Services** (Business Logic):
 - **DataService**: Data acquisition and processing (market, CPI, wage data)
-- **PortfolioService**: Portfolio mathematics and state management (rebalancing, withdrawals)
+- **PortfolioService**: Portfolio mathematics and state management (rebalancing, withdrawals, dynamic withdrawal calculations)
 - **SimulationService**: Hybrid simulation engine (historical accumulation, Monte Carlo retirement)
-- **Components**: UI components (sidebar, charts, results)
+- **SimulationController**: Orchestrates simulation execution, input caching, and result management
 
-**Type Safety**: Dataclasses for all data structures (SimulationParams, SimulationResult, PortfolioState, WithdrawalParams, ExpenseCategory). Type hints throughout enable IDE support and catch errors early.
+**Components** (UI Layer):
+- **SidebarComponent**: User input forms with expense categories, portfolio allocation, and wage-based savings configuration
+- **ChartComponent**: Visualization components for portfolio performance, savings breakdown, and terminal wealth
+- **ResultsComponent**: Results display, validation messages, and metrics presentation
+- **SummaryComponent**: Pre-simulation summary cards and input summary display
+
+**Main Application**:
+- **main.py**: Lightweight orchestrator (~130 lines) that coordinates components and services, handles validation, and manages the application flow
+
+**Type Safety**: Dataclasses for all data structures (SimulationParams, SimulationResult, PortfolioState, WithdrawalParams, ExpenseCategory, SavingsRateProfile). Type hints throughout enable IDE support and catch errors early.
 
 **Configuration**: Centralized configuration with defaults, ticker mappings, and simulation parameters. Single source of truth for constants ensures consistency.
 
@@ -336,9 +360,15 @@ Terminal balances analyzed with mean, median, percentiles, and histogram visuali
 
 1. **Service separation**: Clear boundaries between data, portfolio logic, and simulation logic enable independent testing and modification. Changes to portfolio rebalancing don't affect data fetching, for example.
 
-2. **Dataclasses**: Type-safe data structures prevent runtime errors from incorrect data shapes. IDE autocomplete and type checking catch many errors before execution.
+2. **Component separation**: UI components are separated by responsibility (input, visualization, results, summary), making the codebase more maintainable and testable.
 
-3. **Centralized config**: All configuration parameters (defaults, crypto handling, cache sizes) in one place makes tuning and maintenance easier.
+3. **Orchestration pattern**: The main application file acts as a lightweight orchestrator, delegating work to specialized components and services. This reduces complexity and improves readability.
+
+4. **Input caching**: Simulation results are cached and automatically invalidated when inputs change (detected via input hash). This improves performance and user experience.
+
+5. **Dataclasses**: Type-safe data structures prevent runtime errors from incorrect data shapes. IDE autocomplete and type checking catch many errors before execution.
+
+6. **Centralized config**: All configuration parameters (defaults, crypto handling, cache sizes) in one place makes tuning and maintenance easier.
 
 ---
 

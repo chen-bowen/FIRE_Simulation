@@ -73,11 +73,11 @@ correlation = cov[0,1] / (sqrt(cov[0,0]) * sqrt(cov[1,1]))
 
 **Typical monthly returns (simplified):**
 
-| Month      | Stocks (^GSPC) | Bonds (^TNX) | Portfolio (60/40)                    |
-| ---------- | -------------- | ------------ | ------------------------------------ |
-| Good month | +3%            | -0.5%        | 60% × 3% + 40% × (-0.5%) = **+1.6%** |
-| Bad month  | -5%            | +1.5%        | 60% × (-5%) + 40% × 1.5% = **-2.1%** |
-| Neutral    | +1%            | +0.3%        | 60% × 1% + 40% × 0.3% = **+0.72%**   |
+| Month      | Stocks (^GSPC) | Bonds (BND/VBMFX) | Portfolio (60/40)                    |
+| ---------- | -------------- | ----------------- | ------------------------------------ |
+| Good month | +3%            | -0.5%             | 60% × 3% + 40% × (-0.5%) = **+1.6%** |
+| Bad month  | -5%            | +1.5%             | 60% × (-5%) + 40% × 1.5% = **-2.1%** |
+| Neutral    | +1%            | +0.3%             | 60% × 1% + 40% × 0.3% = **+0.72%**   |
 
 **Key insight**: In bad stock months (market crashes), bonds typically gain, reducing portfolio losses. This is the **diversification benefit** captured by negative correlation.
 
@@ -162,21 +162,27 @@ bond_return = exp(0.027) - 1 ≈ 2.7%
 The actual calculation happens in `app/services/simulation_service.py`:
 
 ```python
-# Lines 252-266: Calculate covariance and Cholesky factor
+# Calculate covariance and Cholesky factor from historical returns
 log_returns = np.log1p(asset_returns)
 log_means = np.mean(log_returns, axis=0)
 cov = np.cov(log_returns.T)  # 2x2 covariance matrix
 L = self._safe_cholesky(cov)  # Cholesky decomposition
 
-# Lines 387-391: Generate correlated returns
+# Generate correlated returns for Monte Carlo projections
 z = rng.standard_normal(size=(remaining_periods, n_assets))
 mc_log_returns = z @ L.T + log_means  # Correlated log-returns
 mc_arith_returns = np.expm1(mc_log_returns)  # Convert to arithmetic
 ```
 
+**Note**: The codebase has been refactored for better maintainability. The simulation logic is now organized into:
+
+- `SimulationService`: Core simulation engine with covariance and Cholesky calculations
+- `SimulationController`: Orchestrates simulation execution and caching
+- `PortfolioService`: Handles portfolio state and rebalancing logic
+
 ## Summary
 
-1. **Historical data**: System downloads 10+ years of monthly returns for ^GSPC (stocks) and ^TNX (bonds)
+1. **Historical data**: System downloads 10+ years of monthly returns for ^GSPC (stocks) and BND/VBMFX (bonds)
 
 2. **Covariance calculation**: Calculates how stocks and bonds moved together historically
 
